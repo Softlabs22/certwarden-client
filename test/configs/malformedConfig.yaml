@@ -1,0 +1,4 @@
+global:
+  certWardenURL: "test"
+  refreshPeriod: "* * * * *"
+certificates: []

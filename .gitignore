@@ -1,0 +1,12 @@
+/config.yaml
+/certwarden-client
+*.pem
+*.p12
+obj*/
+debian/*.log
+debian/files
+debian/*.substvars
+debian/.*
+debian/*.debhelper
+debian/debhelper-build-stamp
+.DS_Store

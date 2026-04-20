@@ -1,0 +1,6 @@
+global:
+  certWardenUrl: https://example.com
+  refreshPeriod: 1d
+  jobTimeout: 5s
+  storePath: /etc/certwarden-client/certs/
+certificates: []

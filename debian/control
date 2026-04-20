@@ -1,0 +1,20 @@
+Source: certwarden-client
+Section: utils
+Priority: optional
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-any,
+ dh-golang,
+ dh-sequence-golang,
+ dh-sequence-installsysusers,
+Standards-Version: 4.6.2
+XS-Go-Import-Path: certwarden-client
+Maintainer: Feliksas <3208508+Feliksas@users.noreply.github.com>
+Rules-Requires-Root: no
+
+Package: certwarden-client
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, systemd | systemd-sysusers
+Description: Lightweight and simple Certwarden client
+	A minimalistic client for Certwarden certificate management
+	service.

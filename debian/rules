@@ -1,0 +1,19 @@
+#!/usr/bin/make -f
+
+export DH_VERBOSE = 0
+
+export DH_GOLANG_INSTALL_ALL := 0
+export GO111MODULE := on
+export GOPROXY := https://proxy.golang.org
+export DH_GOLANG_BUILDPKG := certwarden-client/cmd/certwarden-client
+export DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+export VERSION := $(shell git describe --tags --exact-match 2>/dev/null || git branch --show-current)
+
+%:
+	dh $@ --buildsystem=golang --with=golang
+
+override_dh_auto_install:
+	dh_auto_install -- --no-source
+
+override_dh_auto_build:
+	dh_auto_build -- -ldflags="-w -s -X main.Version=$(VERSION) -X main.BuildDate=$(DATE)"

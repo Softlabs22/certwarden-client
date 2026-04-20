@@ -1,0 +1,13 @@
+[Unit]
+Description=CertWarden client
+
+[Service]
+ExecStart=/usr/bin/certwarden-client --config /etc/certwarden-client/config.yaml
+TimeoutSec=0
+RestartSec=10
+Restart=always
+User=certclient
+Group=certclient
+
+[Install]
+WantedBy=multi-user.target

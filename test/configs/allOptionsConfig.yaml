@@ -1,0 +1,44 @@
+global:
+  certWardenURL: https://example.com
+  refreshPeriod: 1w1d1h1m1s
+  jobTimeout: 5s
+  storePath: /etc/ssl
+  logPath: /var/log/log.log
+  logLevel: debug
+certificates:
+  - name: test1
+    certAPIToken: &certtoken CertToken
+    keyAPIToken: &keytoken KeyToken
+    refreshPeriod: &refreshperiod 10s
+    kind: privatekey
+    onRefreshCmd: &refreshcmd "command"
+  - name: test2
+    certAPIToken: *certtoken
+    keyAPIToken: *keytoken
+    refreshPeriod: *refreshperiod
+    kind: certificate
+    onRefreshCmd: *refreshcmd
+  - name: test3
+    certAPIToken: *certtoken
+    keyAPIToken: *keytoken
+    refreshPeriod: *refreshperiod
+    kind: privatecertchain
+    onRefreshCmd: *refreshcmd
+  - name: test4
+    certAPIToken: *certtoken
+    keyAPIToken: *keytoken
+    refreshPeriod: *refreshperiod
+    kind: pfx
+    onRefreshCmd: *refreshcmd
+  - name: test5
+    certAPIToken: *certtoken
+    keyAPIToken: *keytoken
+    refreshPeriod: *refreshperiod
+    kind: privatecert
+    onRefreshCmd: *refreshcmd
+  - name: test6
+    certAPIToken: *certtoken
+    keyAPIToken: *keytoken
+    refreshPeriod: *refreshperiod
+    kind: certrootchain
+    onRefreshCmd: *refreshcmd
