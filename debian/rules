@@ -2,7 +2,7 @@
 
 export DH_VERBOSE = 0
 
-export DH_GOLANG_INSTALL_ALL := 0
+export DH_GOLANG_INSTALL_ALL := 1
 export GO111MODULE := on
 export GOPROXY := https://proxy.golang.org
 export DH_GOLANG_BUILDPKG := certwarden-client/cmd/certwarden-client
@@ -17,3 +17,7 @@ override_dh_auto_install:
 
 override_dh_auto_build:
 	dh_auto_build -- -ldflags="-w -s -X main.Version=$(VERSION) -X main.BuildDate=$(DATE)"
+
+override_dh_auto_test:
+	cd obj-$(DEB_HOST_GNU_TYPE) && \
+	go test -v certwarden-client/...

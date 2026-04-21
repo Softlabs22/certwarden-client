@@ -335,13 +335,15 @@ func (j *CertJob) Run(ctx context.Context) error {
 			var exitErr *exec.ExitError
 			ok := errors.As(err, &exitErr)
 			if !ok {
-				return err
+				logger.Log.WithFields(logFields).Errorf(
+					"Failed to run on-refresh command: %s", err)
+			} else {
+				logger.Log.WithFields(logFields).Errorf(
+					"Command failed: %s, output: \"%s\"",
+					exitErr.Error(),
+					string(result),
+				)
 			}
-			logger.Log.WithFields(logFields).Errorf(
-				"Command failed: %s, output: \"%s\"",
-				exitErr.Error(),
-				string(result),
-			)
 		} else {
 			logger.Log.WithFields(logFields).Infof("Command succeeded, output: \"%s\"", string(result))
 		}

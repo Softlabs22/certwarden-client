@@ -103,6 +103,7 @@ func saveToFile(path string, data []byte) error {
 	if err != nil {
 		return err
 	}
+	_ = outFile.Sync()
 	return nil
 }
 
