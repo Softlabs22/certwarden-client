@@ -2,7 +2,7 @@ certwarden-client (1.0.1) noble; urgency=medium
 
   * Make target file permissions configurable
 
- -- "Andrey Ignatov" <andrey.ignatov@agcsoft.com>  Thu, 23 Apr 2026 11:20:13 +0300
+ -- Andrey Ignatov <andrey.ignatov@agcsoft.com>  Thu, 23 Apr 2026 11:20:13 +0300
 
 certwarden-client (1.0.0) noble; urgency=medium
 
