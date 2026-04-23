@@ -198,6 +198,7 @@ func TestWorkerPrivateKey(t *testing.T) {
 		KeyToken:     TestKeyToken,
 		OnRefreshCmd: "touch /tmp/refresh.ok",
 		SavePath:     "/tmp/",
+		Filename:     "test.pem",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindPrivateKey,
 		RunInterval:  3600,
@@ -205,27 +206,27 @@ func TestWorkerPrivateKey(t *testing.T) {
 	}
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	assertions.FileExists("/tmp/test_key.pem")
+	assertions.FileExists("/tmp/test.pem")
 	assertions.FileExists("/tmp/refresh.ok")
 	_ = os.Remove("/tmp/refresh.ok")
 	defer func() {
-		_ = os.Remove("/tmp/test_key.pem")
+		_ = os.Remove("/tmp/test.pem")
 	}()
 
-	oldStat, _ := os.Stat("/tmp/test_key.pem")
+	oldStat, _ := os.Stat("/tmp/test.pem")
 	assertions.Equal(os.FileMode(0640), oldStat.Mode())
 
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/test_key.pem")
+	newStat, _ := os.Stat("/tmp/test.pem")
 	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
 	assertions.NoFileExists("/tmp/refresh.ok")
 
 	newKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	rawKey, _ := x509.MarshalPKCS8PrivateKey(newKey)
 	_ = os.WriteFile(
-		"/tmp/test_key.pem",
+		"/tmp/test.pem",
 		pem.EncodeToMemory(
 			&pem.Block{
 				Type:  "PRIVATE KEY",
@@ -235,11 +236,11 @@ func TestWorkerPrivateKey(t *testing.T) {
 		fs.FileMode(0755),
 	)
 
-	oldStat, _ = os.Stat("/tmp/test_key.pem")
+	oldStat, _ = os.Stat("/tmp/test.pem")
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/test_key.pem")
+	newStat, _ = os.Stat("/tmp/test.pem")
 	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
 	assertions.Equal(os.FileMode(0640), newStat.Mode())
 	assertions.FileExists("/tmp/refresh.ok")
@@ -279,6 +280,7 @@ func TestWorkerCertificate(t *testing.T) {
 		KeyToken:     TestKeyToken,
 		OnRefreshCmd: "touch /tmp/refresh.ok",
 		SavePath:     "/tmp/",
+		Filename:     "test.pem",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindCertificate,
 		RunInterval:  3600,
@@ -286,27 +288,27 @@ func TestWorkerCertificate(t *testing.T) {
 	}
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	assertions.FileExists("/tmp/test_certchain.pem")
+	assertions.FileExists("/tmp/test.pem")
 	assertions.FileExists("/tmp/refresh.ok")
 	_ = os.Remove("/tmp/refresh.ok")
 	defer func() {
-		_ = os.Remove("/tmp/test_certchain.pem")
+		_ = os.Remove("/tmp/test.pem")
 	}()
 
-	oldStat, _ := os.Stat("/tmp/test_certchain.pem")
+	oldStat, _ := os.Stat("/tmp/test.pem")
 	assertions.Equal(os.FileMode(0640), oldStat.Mode())
 
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/test_certchain.pem")
+	newStat, _ := os.Stat("/tmp/test.pem")
 	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
 	assertions.NoFileExists("/tmp/refresh.ok")
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
 
-	fout, err := os.Create("/tmp/test_certchain.pem")
+	fout, err := os.Create("/tmp/test.pem")
 	requirements.NoError(err)
 
 	_, err = io.Copy(fout, fin)
@@ -314,11 +316,11 @@ func TestWorkerCertificate(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
-	oldStat, _ = os.Stat("/tmp/test_certchain.pem")
+	oldStat, _ = os.Stat("/tmp/test.pem")
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/test_certchain.pem")
+	newStat, _ = os.Stat("/tmp/test.pem")
 	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
 	assertions.Equal(os.FileMode(0640), newStat.Mode())
 	assertions.FileExists("/tmp/refresh.ok")
@@ -358,6 +360,7 @@ func TestWorkerPrivateCertChain(t *testing.T) {
 		KeyToken:     TestKeyToken,
 		OnRefreshCmd: "touch /tmp/refresh.ok",
 		SavePath:     "/tmp/",
+		Filename:     "test.pem",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindPrivateCertChain,
 		RunInterval:  3600,
@@ -365,27 +368,27 @@ func TestWorkerPrivateCertChain(t *testing.T) {
 	}
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	assertions.FileExists("/tmp/test_keycertchain.pem")
+	assertions.FileExists("/tmp/test.pem")
 	assertions.FileExists("/tmp/refresh.ok")
 	_ = os.Remove("/tmp/refresh.ok")
 	defer func() {
-		_ = os.Remove("/tmp/test_keycertchain.pem")
+		_ = os.Remove("/tmp/test.pem")
 	}()
 
-	oldStat, _ := os.Stat("/tmp/test_keycertchain.pem")
+	oldStat, _ := os.Stat("/tmp/test.pem")
 	assertions.Equal(os.FileMode(0640), oldStat.Mode())
 
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/test_keycertchain.pem")
+	newStat, _ := os.Stat("/tmp/test.pem")
 	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
 	assertions.NoFileExists("/tmp/refresh.ok")
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
 
-	fout, err := os.Create("/tmp/test_keycertchain.pem")
+	fout, err := os.Create("/tmp/test.pem")
 	requirements.NoError(err)
 
 	_, err = io.Copy(fout, fin)
@@ -393,11 +396,11 @@ func TestWorkerPrivateCertChain(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
-	oldStat, _ = os.Stat("/tmp/test_keycertchain.pem")
+	oldStat, _ = os.Stat("/tmp/test.pem")
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/test_keycertchain.pem")
+	newStat, _ = os.Stat("/tmp/test.pem")
 	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
 	assertions.Equal(os.FileMode(0640), newStat.Mode())
 	assertions.FileExists("/tmp/refresh.ok")
@@ -437,6 +440,7 @@ func TestWorkerPFX(t *testing.T) {
 		KeyToken:     TestKeyToken,
 		OnRefreshCmd: "touch /tmp/refresh.ok",
 		SavePath:     "/tmp/",
+		Filename:     "testpfx.p12",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindPFX,
 		RunInterval:  3600,
@@ -444,37 +448,37 @@ func TestWorkerPFX(t *testing.T) {
 	}
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	assertions.FileExists("/tmp/test.p12")
+	assertions.FileExists("/tmp/testpfx.p12")
 	assertions.FileExists("/tmp/refresh.ok")
 	_ = os.Remove("/tmp/refresh.ok")
 	defer func() {
-		_ = os.Remove("/tmp/test.p12")
+		_ = os.Remove("/tmp/testpfx.p12")
 	}()
 
-	oldStat, _ := os.Stat("/tmp/test.p12")
+	oldStat, _ := os.Stat("/tmp/testpfx.p12")
 	assertions.Equal(os.FileMode(0640), oldStat.Mode())
 
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/test.p12")
+	newStat, _ := os.Stat("/tmp/testpfx.p12")
 	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
 	assertions.NoFileExists("/tmp/refresh.ok")
 
 	fin, err := os.Open("../../test/pem/testAnotherPFX.p12")
 	requirements.NoError(err)
-	fout, err := os.Create("/tmp/test.p12")
+	fout, err := os.Create("/tmp/testpfx.p12")
 	requirements.NoError(err)
 	_, err = io.Copy(fout, fin)
 	requirements.NoError(err)
 	_ = fin.Close()
 	_ = fout.Close()
 
-	oldStat, _ = os.Stat("/tmp/test.p12")
+	oldStat, _ = os.Stat("/tmp/testpfx.p12")
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/test.p12")
+	newStat, _ = os.Stat("/tmp/testpfx.p12")
 	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
 	assertions.Equal(os.FileMode(0640), newStat.Mode())
 	assertions.FileExists("/tmp/refresh.ok")
@@ -514,6 +518,7 @@ func TestWorkerPrivateCert(t *testing.T) {
 		KeyToken:     TestKeyToken,
 		OnRefreshCmd: "touch /tmp/refresh.ok",
 		SavePath:     "/tmp/",
+		Filename:     "test.pem",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindPrivateCert,
 		RunInterval:  3600,
@@ -521,27 +526,27 @@ func TestWorkerPrivateCert(t *testing.T) {
 	}
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	assertions.FileExists("/tmp/test_keycert.pem")
+	assertions.FileExists("/tmp/test.pem")
 	assertions.FileExists("/tmp/refresh.ok")
 	_ = os.Remove("/tmp/refresh.ok")
 	defer func() {
-		_ = os.Remove("/tmp/test_keycert.pem")
+		_ = os.Remove("/tmp/test.pem")
 	}()
 
-	oldStat, _ := os.Stat("/tmp/test_keycert.pem")
+	oldStat, _ := os.Stat("/tmp/test.pem")
 	assertions.Equal(os.FileMode(0640), oldStat.Mode())
 
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/test_keycert.pem")
+	newStat, _ := os.Stat("/tmp/test.pem")
 	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
 	assertions.NoFileExists("/tmp/refresh.ok")
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
 
-	fout, err := os.Create("/tmp/test_keycert.pem")
+	fout, err := os.Create("/tmp/test.pem")
 	requirements.NoError(err)
 
 	_, err = io.Copy(fout, fin)
@@ -549,11 +554,11 @@ func TestWorkerPrivateCert(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
-	oldStat, _ = os.Stat("/tmp/test_keycert.pem")
+	oldStat, _ = os.Stat("/tmp/test.pem")
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/test_keycert.pem")
+	newStat, _ = os.Stat("/tmp/test.pem")
 	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
 	assertions.Equal(os.FileMode(0640), newStat.Mode())
 	assertions.FileExists("/tmp/refresh.ok")
@@ -593,6 +598,7 @@ func TestWorkerRootChain(t *testing.T) {
 		KeyToken:     TestKeyToken,
 		OnRefreshCmd: "touch /tmp/refresh.ok",
 		SavePath:     "/tmp/",
+		Filename:     "test.pem",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindCertRootChain,
 		RunInterval:  3600,
@@ -600,27 +606,27 @@ func TestWorkerRootChain(t *testing.T) {
 	}
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	assertions.FileExists("/tmp/test_rootchain.pem")
+	assertions.FileExists("/tmp/test.pem")
 	assertions.FileExists("/tmp/refresh.ok")
 	_ = os.Remove("/tmp/refresh.ok")
 	defer func() {
-		_ = os.Remove("/tmp/test_rootchain.pem")
+		_ = os.Remove("/tmp/test.pem")
 	}()
 
-	oldStat, _ := os.Stat("/tmp/test_rootchain.pem")
+	oldStat, _ := os.Stat("/tmp/test.pem")
 	assertions.Equal(os.FileMode(0640), oldStat.Mode())
 
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/test_rootchain.pem")
+	newStat, _ := os.Stat("/tmp/test.pem")
 	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
 	assertions.NoFileExists("/tmp/refresh.ok")
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
 
-	fout, err := os.Create("/tmp/test_rootchain.pem")
+	fout, err := os.Create("/tmp/test.pem")
 	requirements.NoError(err)
 
 	_, err = io.Copy(fout, fin)
@@ -628,11 +634,11 @@ func TestWorkerRootChain(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
-	oldStat, _ = os.Stat("/tmp/test_rootchain.pem")
+	oldStat, _ = os.Stat("/tmp/test.pem")
 	time.Sleep(time.Millisecond * 100)
 	err = job.Run(ctx)
 	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/test_rootchain.pem")
+	newStat, _ = os.Stat("/tmp/test.pem")
 	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
 	assertions.Equal(os.FileMode(0640), newStat.Mode())
 	assertions.FileExists("/tmp/refresh.ok")

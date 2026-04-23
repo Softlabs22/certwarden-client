@@ -13,6 +13,7 @@ certificates:
     kind: privatekey
     permissions: 0123
     storePath: /opt/certs
+    filename: test1_key.pem
     onRefreshCmd: &refreshcmd "command"
   - name: test2
     certAPIToken: *certtoken
@@ -21,6 +22,7 @@ certificates:
     kind: certificate
     permissions: 0123
     storePath: /opt/certs
+    filename: test2_certchain.pem
     onRefreshCmd: *refreshcmd
   - name: test3
     certAPIToken: *certtoken
@@ -29,6 +31,7 @@ certificates:
     kind: privatecertchain
     permissions: 0123
     storePath: /opt/certs
+    filename: test3_keycertchain.pem
     onRefreshCmd: *refreshcmd
   - name: test4
     certAPIToken: *certtoken
@@ -37,6 +40,7 @@ certificates:
     kind: pfx
     permissions: 0123
     storePath: /opt/certs
+    filename: test4.p12
     onRefreshCmd: *refreshcmd
   - name: test5
     certAPIToken: *certtoken
@@ -45,6 +49,7 @@ certificates:
     kind: privatecert
     permissions: 0123
     storePath: /opt/certs
+    filename: test5_keycert.pem
     onRefreshCmd: *refreshcmd
   - name: test6
     certAPIToken: *certtoken
@@ -53,4 +58,5 @@ certificates:
     kind: certrootchain
     permissions: 0123
     storePath: /opt/certs
+    filename: test6_rootchain.pem
     onRefreshCmd: *refreshcmd

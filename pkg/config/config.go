@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"time"
 
 	"fortio.org/duration"
@@ -43,6 +44,15 @@ var certKindName = map[string]CertKind{
 	"certrootchain":    KindCertRootChain,
 }
 
+var certKindDefaultFilename = map[CertKind]string{
+	KindPrivateKey:       "%s_key.pem",
+	KindCertificate:      "%s_certchain.pem",
+	KindPrivateCertChain: "%s_keycertchain.pem",
+	KindPFX:              "%s.p12",
+	KindPrivateCert:      "%s_keycert.pem",
+	KindCertRootChain:    "%s_rootchain.pem",
+}
+
 type Global struct {
 	CertWardenURL string        `yaml:"certWardenURL"`
 	RefreshPeriod *TimeDuration `yaml:"refreshPeriod"`
@@ -58,6 +68,7 @@ type Certificate struct {
 	KeyAPIToken   string        `yaml:"keyAPIToken"`
 	Kind          *CertKind     `yaml:"kind"`
 	StorePath     string        `yaml:"storePath"`
+	Filename      string        `yaml:"filename"`
 	Permissions   *OSFileMode   `yaml:"permissions"`
 	RefreshPeriod *TimeDuration `yaml:"refreshPeriod"`
 	OnRefreshCmd  string        `yaml:"onRefreshCmd"`
@@ -139,13 +150,21 @@ func (g *Global) SetDefaults() {
 	}
 }
 
-func (c *Certificate) SetDefaults() {
+func (c *Certificate) SetDefaults(index int) {
+	if c.Name == "" {
+		c.Name = strconv.Itoa(index)
+	}
+
 	if c.Kind == nil {
 		c.Kind = new(DefaultKind)
 	}
 
 	if c.Permissions == nil {
 		c.Permissions = new(OSFileMode(os.FileMode(DefaultPermissions)))
+	}
+
+	if c.Filename == "" {
+		c.Filename = fmt.Sprintf(certKindDefaultFilename[*c.Kind], c.Name)
 	}
 }
 
@@ -157,7 +176,7 @@ func (c *Config) applyDefaults() {
 	c.Global.SetDefaults()
 
 	for i := range c.Certificates {
-		c.Certificates[i].SetDefaults()
+		c.Certificates[i].SetDefaults(i)
 	}
 }
 

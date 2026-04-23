@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/x509"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -26,6 +25,7 @@ type CertJob struct {
 	KeyToken     string
 	OnRefreshCmd string
 	SavePath     string
+	Filename     string
 	Permissions  *os.FileMode
 	Kind         config.CertKind
 	RunInterval  time.Duration
@@ -107,7 +107,7 @@ func (j *CertJob) Run(ctx context.Context) error {
 	logger.Log.WithFields(logFields).Info("Running fetch job")
 	cw := new(api.CertWarden{Context: ctx, HostURL: j.APIHostURL, Client: &http.Client{}})
 	filesChanged := false
-	var filePath string
+	filePath := filepath.Join(j.SavePath, j.Filename)
 	var serverKeys, existingKeys []any
 	var serverCertChain, existingCertChain []*x509.Certificate
 	compareFunc := func(skipCompare bool) error {
@@ -162,7 +162,6 @@ func (j *CertJob) Run(ctx context.Context) error {
 	}
 	switch j.Kind {
 	case config.KindPrivateKey:
-		filePath = filepath.Join(j.SavePath, fmt.Sprintf("%s_key.pem", j.Name))
 		logger.Log.WithFields(logFields).Info("Fetching private key")
 		var err error
 		serverKeys, err = fetchPrivateKeys(cw, j.Name, j.KeyToken)
@@ -184,7 +183,6 @@ func (j *CertJob) Run(ctx context.Context) error {
 			return err
 		}
 	case config.KindCertificate:
-		filePath = filepath.Join(j.SavePath, fmt.Sprintf("%s_certchain.pem", j.Name))
 		logger.Log.WithFields(logFields).Info("Fetching certificate chain")
 		var err error
 		serverCertChain, err = fetchCertChain(cw, j.Name, j.CertToken)
@@ -206,7 +204,6 @@ func (j *CertJob) Run(ctx context.Context) error {
 			return err
 		}
 	case config.KindPrivateCertChain:
-		filePath = filepath.Join(j.SavePath, fmt.Sprintf("%s_keycertchain.pem", j.Name))
 		logger.Log.WithFields(logFields).Info("Fetching certificate chain+key pair")
 		var err error
 		serverCertChain, serverKeys, err = fetchPrivateCertChain(cw, j.Name, j.CertToken+"."+j.KeyToken)
@@ -231,7 +228,6 @@ func (j *CertJob) Run(ctx context.Context) error {
 			return err
 		}
 	case config.KindPFX:
-		filePath = filepath.Join(j.SavePath, fmt.Sprintf("%s.p12", j.Name))
 		logger.Log.WithFields(logFields).Info("Fetching PFX")
 		pfxData, err := cw.GetPFX(j.Name, j.CertToken+"."+j.KeyToken)
 		if err != nil {
@@ -283,7 +279,6 @@ func (j *CertJob) Run(ctx context.Context) error {
 			}
 		}
 	case config.KindPrivateCert:
-		filePath = filepath.Join(j.SavePath, fmt.Sprintf("%s_keycert.pem", j.Name))
 		logger.Log.WithFields(logFields).Info("Fetching certificate+key pair")
 		var err error
 		serverCertChain, serverKeys, err = fetchPrivateCert(cw, j.Name, j.CertToken+"."+j.KeyToken)
@@ -308,7 +303,6 @@ func (j *CertJob) Run(ctx context.Context) error {
 			return err
 		}
 	case config.KindCertRootChain:
-		filePath = filepath.Join(j.SavePath, fmt.Sprintf("%s_rootchain.pem", j.Name))
 		logger.Log.WithFields(logFields).Info("Fetching certificate root chain")
 		var err error
 		serverCertChain, err = fetchRootCertChain(cw, j.Name, j.CertToken)

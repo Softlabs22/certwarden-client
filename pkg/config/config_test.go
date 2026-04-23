@@ -164,42 +164,44 @@ func TestCertificateSetDefaults(t *testing.T) {
 	assertions := assert.New(t)
 
 	var expected = Certificate{
-		Name:          "",
+		Name:          "0",
 		CertAPIToken:  "",
 		KeyAPIToken:   "",
 		Kind:          new(DefaultKind),
 		StorePath:     "",
+		Filename:      "0_keycertchain.pem",
 		Permissions:   new(OSFileMode(DefaultPermissions)),
 		RefreshPeriod: nil,
 		OnRefreshCmd:  "",
 	}
 
 	actual := Certificate{}
-	actual.SetDefaults()
+	actual.SetDefaults(0)
 	assertions.Equal(expected, actual)
 }
 
 func TestConfigApplyDefaults(t *testing.T) {
 	assertions := assert.New(t)
 
-	refreshperiod, _ := duration.Parse(DefaultRefreshPeriod)
-	jobtimeout, _ := duration.Parse(DefaultJobTimeout)
+	refreshPeriod, _ := duration.Parse(DefaultRefreshPeriod)
+	jobTimeout, _ := duration.Parse(DefaultJobTimeout)
 	expected := Config{
 		Global: &Global{
 			CertWardenURL: "",
-			RefreshPeriod: new(TimeDuration(refreshperiod)),
-			JobTimeout:    new(TimeDuration(jobtimeout)),
+			RefreshPeriod: new(TimeDuration(refreshPeriod)),
+			JobTimeout:    new(TimeDuration(jobTimeout)),
 			StorePath:     DefaultStorePath,
 			LogPath:       DefaultLogPath,
 			LogLevel:      DefaultLogLevel,
 		},
 		Certificates: []*Certificate{
 			{
-				Name:          "",
+				Name:          "0",
 				CertAPIToken:  "",
 				KeyAPIToken:   "",
 				Kind:          new(DefaultKind),
 				StorePath:     "",
+				Filename:      "0_keycertchain.pem",
 				Permissions:   new(OSFileMode(DefaultPermissions)),
 				RefreshPeriod: nil,
 				OnRefreshCmd:  "",
@@ -267,6 +269,7 @@ func TestConfigLoadFullConfig(t *testing.T) {
 		assertions.Equal("KeyToken", cert.KeyAPIToken)
 		assertions.Equal((*CertKind)(new(testno)), cert.Kind)
 		assertions.Equal("/opt/certs", cert.StorePath)
+		assertions.Equal(fmt.Sprintf(certKindDefaultFilename[*cert.Kind], cert.Name), cert.Filename)
 		assertions.Equal(expectedPermissions, cert.Permissions)
 		assertions.Equal((*TimeDuration)(new(int64(10000000000))), cert.RefreshPeriod)
 		assertions.Equal("command", cert.OnRefreshCmd)
