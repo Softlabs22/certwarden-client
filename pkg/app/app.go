@@ -49,6 +49,7 @@ func Run(conf *config.Config) error {
 			KeyToken:     cert.KeyAPIToken,
 			Kind:         *cert.Kind,
 			SavePath:     storePath,
+			Permissions:  (*os.FileMode)(cert.Permissions),
 			OnRefreshCmd: cert.OnRefreshCmd,
 			RunInterval:  time.Duration(*refreshPeriod),
 			JobTimeout:   time.Duration(*conf.Global.JobTimeout),

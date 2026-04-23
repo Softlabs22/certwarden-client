@@ -1,11 +1,17 @@
+certwarden-client (1.0.1) noble; urgency=medium
+
+  * Make target file permissions configurable
+
+ -- "Andrey Ignatov" <andrey.ignatov@agcsoft.com>  Thu, 23 Apr 2026 11:20:13 +0300
+
 certwarden-client (1.0.0) noble; urgency=medium
 
   * Production-ready version 
 
- -- Feliksas <3208508+Feliksas@users.noreply.github.com>  Mon, 20 Apr 2026 19:54:07 +0300
+ -- Andrey Ignatov <andrey.ignatov@agcsoft.com>  Mon, 20 Apr 2026 19:54:07 +0300
 
 certwarden-client (0.1.0) noble; urgency=medium
 
   * Initial release
 
- -- Feliksas <3208508+Feliksas@users.noreply.github.com>  Mon, 13 Apr 2026 12:18:19 +0300
+ -- Andrey Ignatov <andrey.ignatov@agcsoft.com>  Mon, 13 Apr 2026 12:18:19 +0300

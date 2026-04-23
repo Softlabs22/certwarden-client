@@ -91,8 +91,8 @@ func loadFromFile(path string) ([]byte, error) {
 	return data, nil
 }
 
-func saveToFile(path string, data []byte) error {
-	outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+func saveToFile(path string, data []byte, perms *os.FileMode) error {
+	outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, *perms)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func saveToFile(path string, data []byte) error {
 	return nil
 }
 
-func saveCertKeyChainToFile(path string, certs []*x509.Certificate, keys []any) error {
+func saveCertKeyChainToFile(path string, certs []*x509.Certificate, keys []any, perms *os.FileMode) error {
 	var pemBlocks []*pem.Block
 	if keys != nil {
 		for _, key := range keys {
@@ -138,7 +138,7 @@ func saveCertKeyChainToFile(path string, certs []*x509.Certificate, keys []any) 
 			}
 			data = append(data, pemBinary...)
 		}
-		err := saveToFile(path, data)
+		err := saveToFile(path, data, perms)
 		if err != nil {
 			return err
 		}

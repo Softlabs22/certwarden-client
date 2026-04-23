@@ -12,6 +12,7 @@ import (
 
 type CertKind int
 type TimeDuration time.Duration
+type OSFileMode os.FileMode
 
 const (
 	KindPrivateKey CertKind = iota
@@ -30,6 +31,7 @@ const (
 	DefaultLogLevel      = "info"
 	DefaultStorePath     = "/etc/certwarden-client/certs/"
 	DefaultKind          = KindPrivateCertChain
+	DefaultPermissions   = 0640
 )
 
 var certKindName = map[string]CertKind{
@@ -56,6 +58,7 @@ type Certificate struct {
 	KeyAPIToken   string        `yaml:"keyAPIToken"`
 	Kind          *CertKind     `yaml:"kind"`
 	StorePath     string        `yaml:"storePath"`
+	Permissions   *OSFileMode   `yaml:"permissions"`
 	RefreshPeriod *TimeDuration `yaml:"refreshPeriod"`
 	OnRefreshCmd  string        `yaml:"onRefreshCmd"`
 }
@@ -103,6 +106,16 @@ func (k *CertKind) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+func (fm *OSFileMode) UnmarshalYAML(value *yaml.Node) error {
+	var i int
+	if err := value.Decode(&i); err != nil {
+		return err
+	}
+
+	*fm = OSFileMode(os.FileMode(i))
+	return nil
+}
+
 func (g *Global) SetDefaults() {
 	if g.RefreshPeriod == nil {
 		t, _ := duration.Parse(DefaultRefreshPeriod)
@@ -129,6 +142,10 @@ func (g *Global) SetDefaults() {
 func (c *Certificate) SetDefaults() {
 	if c.Kind == nil {
 		c.Kind = new(DefaultKind)
+	}
+
+	if c.Permissions == nil {
+		c.Permissions = new(OSFileMode(os.FileMode(DefaultPermissions)))
 	}
 }
 

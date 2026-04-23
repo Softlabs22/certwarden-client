@@ -93,6 +93,54 @@ func TestCertKindUnmarshalYAML(t *testing.T) {
 	}
 }
 
+func TestOSFileModeUnmarshalYAML(t *testing.T) {
+	assertions := assert.New(t)
+	requirements := require.New(t)
+
+	var valueText = yaml.Node{
+		Kind:          yaml.ScalarNode,
+		Style:         0,
+		Tag:           "!!str",
+		Value:         "0644",
+		Anchor:        "",
+		Alias:         nil,
+		Content:       nil,
+		HeadComment:   "",
+		LineComment:   "",
+		FootComment:   "",
+		Line:          3,
+		Column:        18,
+		Encoding:      yaml.EncodingAny,
+		Version:       nil,
+		TagDirectives: nil,
+	}
+
+	var valueInt = yaml.Node{
+		Kind:          yaml.ScalarNode,
+		Style:         0,
+		Tag:           "!!int",
+		Value:         "0644",
+		Anchor:        "",
+		Alias:         nil,
+		Content:       nil,
+		HeadComment:   "",
+		LineComment:   "",
+		FootComment:   "",
+		Line:          3,
+		Column:        18,
+		Encoding:      yaml.EncodingAny,
+		Version:       nil,
+		TagDirectives: nil,
+	}
+
+	var perm OSFileMode
+	err := perm.UnmarshalYAML(&valueText)
+	assertions.Error(err)
+	err = perm.UnmarshalYAML(&valueInt)
+	requirements.NoErrorf(err, "failed to unmarshal OSFileMode: %s", err)
+	assertions.Equal(OSFileMode(0644), perm, "invalid OSFileMode after unmarshal")
+}
+
 func TestGlobalSetDefaults(t *testing.T) {
 	assertions := assert.New(t)
 
@@ -121,6 +169,7 @@ func TestCertificateSetDefaults(t *testing.T) {
 		KeyAPIToken:   "",
 		Kind:          new(DefaultKind),
 		StorePath:     "",
+		Permissions:   new(OSFileMode(DefaultPermissions)),
 		RefreshPeriod: nil,
 		OnRefreshCmd:  "",
 	}
@@ -151,6 +200,7 @@ func TestConfigApplyDefaults(t *testing.T) {
 				KeyAPIToken:   "",
 				Kind:          new(DefaultKind),
 				StorePath:     "",
+				Permissions:   new(OSFileMode(DefaultPermissions)),
 				RefreshPeriod: nil,
 				OnRefreshCmd:  "",
 			},
@@ -210,12 +260,14 @@ func TestConfigLoadFullConfig(t *testing.T) {
 	assertions.Equal("/var/log/log.log", conf.Global.LogPath)
 	assertions.Equal("debug", conf.Global.LogLevel)
 
+	expectedPermissions := new(OSFileMode(0123))
 	for testno, cert := range conf.Certificates {
 		assertions.Equal(fmt.Sprintf("test%d", testno+1), cert.Name)
 		assertions.Equal("CertToken", cert.CertAPIToken)
 		assertions.Equal("KeyToken", cert.KeyAPIToken)
 		assertions.Equal((*CertKind)(new(testno)), cert.Kind)
-		assertions.Equal("", cert.StorePath)
+		assertions.Equal("/opt/certs", cert.StorePath)
+		assertions.Equal(expectedPermissions, cert.Permissions)
 		assertions.Equal((*TimeDuration)(new(int64(10000000000))), cert.RefreshPeriod)
 		assertions.Equal("command", cert.OnRefreshCmd)
 	}

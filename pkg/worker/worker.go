@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
@@ -25,6 +26,7 @@ type CertJob struct {
 	KeyToken     string
 	OnRefreshCmd string
 	SavePath     string
+	Permissions  *os.FileMode
 	Kind         config.CertKind
 	RunInterval  time.Duration
 	JobTimeout   time.Duration
@@ -122,6 +124,7 @@ func (j *CertJob) Run(ctx context.Context) error {
 				filePath,
 				serverCertChain,
 				serverKeys,
+				j.Permissions,
 			)
 			if err != nil {
 				return err
@@ -147,6 +150,7 @@ func (j *CertJob) Run(ctx context.Context) error {
 					filePath,
 					serverCertChain,
 					serverKeys,
+					j.Permissions,
 				)
 				if err != nil {
 					return err
@@ -246,7 +250,7 @@ func (j *CertJob) Run(ctx context.Context) error {
 
 		if len(existingPFXData) == 0 {
 			logger.Log.WithFields(logFields).Info("Writing new files to disk")
-			err = saveToFile(filePath, pfxData)
+			err = saveToFile(filePath, pfxData, j.Permissions)
 			if err != nil {
 				return err
 			}
@@ -271,7 +275,7 @@ func (j *CertJob) Run(ctx context.Context) error {
 			}
 			if !dataMatches {
 				logger.Log.WithFields(logFields).Info("Writing new files to disk")
-				err = saveToFile(filePath, pfxData)
+				err = saveToFile(filePath, pfxData, j.Permissions)
 				if err != nil {
 					return err
 				}

@@ -34,7 +34,7 @@ func TestSaveToFileBadPath(t *testing.T) {
 	assertions := assert.New(t)
 
 	data := []byte("Lorem ipsum dolor sit amet")
-	err := saveToFile("/tmp/nonexistent/path/here", data)
+	err := saveToFile("/tmp/nonexistent/path/here", data, new(os.FileMode(0640)))
 	assertions.Error(err)
 }
 
@@ -43,9 +43,12 @@ func TestSaveToFile(t *testing.T) {
 	requirements := require.New(t)
 
 	data := []byte("Lorem ipsum dolor sit amet")
-	err := saveToFile("/tmp/test.bin", data)
+	err := saveToFile("/tmp/test.bin", data, new(os.FileMode(0640)))
 	requirements.NoError(err)
-	assertions.FileExists("/tmp/test.bin")
+	requirements.FileExists("/tmp/test.bin")
+	stat, err := os.Stat("/tmp/test.bin")
+	requirements.NoError(err)
+	assertions.Equal(os.FileMode(0640), stat.Mode())
 
 	readBack, err := os.ReadFile("/tmp/test.bin")
 	requirements.NoError(err)
@@ -115,7 +118,7 @@ func TestSaveCertKeyChainToFileBadPath(t *testing.T) {
 	assertions.NotNil(certs)
 	assertions.NotNil(keys)
 
-	err = saveCertKeyChainToFile("/non/existent", certs, keys)
+	err = saveCertKeyChainToFile("/non/existent", certs, keys, new(os.FileMode(0640)))
 	assertions.Error(err)
 }
 
@@ -131,7 +134,7 @@ func TestSaveCertKeyChainToFileMalformedData(t *testing.T) {
 
 	keys[0] = nil
 
-	err = saveCertKeyChainToFile("/tmp/test.pem", certs, keys)
+	err = saveCertKeyChainToFile("/tmp/test.pem", certs, keys, new(os.FileMode(0640)))
 	assertions.Error(err)
 	assertions.NoFileExists("/tmp/test.pem")
 }
@@ -145,9 +148,12 @@ func TestSaveCertKeyChainToFile(t *testing.T) {
 	assertions.NotNil(certs)
 	assertions.NotNil(keys)
 
-	err = saveCertKeyChainToFile("/tmp/test.pem", certs, keys)
+	err = saveCertKeyChainToFile("/tmp/test.pem", certs, keys, new(os.FileMode(0640)))
 	requirements.NoError(err)
 	requirements.FileExists("/tmp/test.pem")
+	stat, err := os.Stat("/tmp/test.pem")
+	requirements.NoError(err)
+	assertions.Equal(os.FileMode(0640), stat.Mode())
 
 	origContents, _ := os.ReadFile("../../test/pem/testKeyPair.pem")
 	newContents, _ := os.ReadFile("/tmp/test.pem")

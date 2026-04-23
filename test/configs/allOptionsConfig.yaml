@@ -11,34 +11,46 @@ certificates:
     keyAPIToken: &keytoken KeyToken
     refreshPeriod: &refreshperiod 10s
     kind: privatekey
+    permissions: 0123
+    storePath: /opt/certs
     onRefreshCmd: &refreshcmd "command"
   - name: test2
     certAPIToken: *certtoken
     keyAPIToken: *keytoken
     refreshPeriod: *refreshperiod
     kind: certificate
+    permissions: 0123
+    storePath: /opt/certs
     onRefreshCmd: *refreshcmd
   - name: test3
     certAPIToken: *certtoken
     keyAPIToken: *keytoken
     refreshPeriod: *refreshperiod
     kind: privatecertchain
+    permissions: 0123
+    storePath: /opt/certs
     onRefreshCmd: *refreshcmd
   - name: test4
     certAPIToken: *certtoken
     keyAPIToken: *keytoken
     refreshPeriod: *refreshperiod
     kind: pfx
+    permissions: 0123
+    storePath: /opt/certs
     onRefreshCmd: *refreshcmd
   - name: test5
     certAPIToken: *certtoken
     keyAPIToken: *keytoken
     refreshPeriod: *refreshperiod
     kind: privatecert
+    permissions: 0123
+    storePath: /opt/certs
     onRefreshCmd: *refreshcmd
   - name: test6
     certAPIToken: *certtoken
     keyAPIToken: *keytoken
     refreshPeriod: *refreshperiod
     kind: certrootchain
+    permissions: 0123
+    storePath: /opt/certs
     onRefreshCmd: *refreshcmd

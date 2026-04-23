@@ -11,3 +11,4 @@ debian/*.debhelper
 debian/debhelper-build-stamp
 debian/certwarden-client/
 .DS_Store
+.idea
