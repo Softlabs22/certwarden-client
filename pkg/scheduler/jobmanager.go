@@ -4,6 +4,7 @@ import (
 	"certwarden-client/pkg/logger"
 	"certwarden-client/pkg/worker"
 	"context"
+	"errors"
 	"math/rand"
 	"time"
 
@@ -16,6 +17,8 @@ type JobManager struct {
 	queue     chan *worker.CertJob
 	scheduler gocron.Scheduler
 	workers   int
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 func retryBackoff(attempt int) time.Duration {
@@ -34,11 +37,14 @@ func NewJobManager(jobs []*worker.CertJob, workers int) (*JobManager, error) {
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	return &JobManager{
 		jobs:      jobs,
 		queue:     make(chan *worker.CertJob, len(jobs)),
 		scheduler: scheduler,
 		workers:   workers,
+		ctx:       ctx,
+		cancel:    cancel,
 	}, nil
 }
 
@@ -46,17 +52,17 @@ func (m *JobManager) registerSchedule(job *worker.CertJob) {
 	_, err := m.scheduler.NewJob(
 		gocron.DurationJob(job.RunInterval),
 		gocron.NewTask(func() {
-			ctx, cancel := context.WithTimeout(
+			cronJobCtx, cancel := context.WithTimeout(
 				context.WithValue(
-					context.Background(),
-					"worker",
+					m.ctx,
+					worker.JobIDContextKey,
 					"cron",
 				),
 				job.JobTimeout,
 			)
 			defer cancel()
 
-			err := job.Run(ctx)
+			err := job.Run(cronJobCtx)
 			if err != nil {
 				logger.Log.Errorf("scheduled job %s failed: %v", job.Name, err)
 			}
@@ -71,8 +77,8 @@ func (m *JobManager) registerSchedule(job *worker.CertJob) {
 func (m *JobManager) executeBootstrap(workerID int, job *worker.CertJob) {
 	attempt := 0
 	for {
-		ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), "worker", workerID), job.JobTimeout)
-		err := job.Run(ctx)
+		jobCtx, cancel := context.WithTimeout(context.WithValue(m.ctx, worker.JobIDContextKey, workerID), job.JobTimeout)
+		err := job.Run(jobCtx)
 
 		if err == nil {
 			logger.Log.Infof("job %s succeeded", job.Name)
@@ -82,13 +88,27 @@ func (m *JobManager) executeBootstrap(workerID int, job *worker.CertJob) {
 			return
 		}
 
-		wait := retryBackoff(attempt)
+		var wait time.Duration
+		if errors.Is(err, context.Canceled) {
+			logger.Log.Errorf("Bootstrap job for %s canceled",
+				job.Name)
+			cancel()
+			return
+		}
+		wait = retryBackoff(attempt)
 		attempt++
 
 		logger.Log.Errorf("job %s failed: %v, retrying in %s",
 			job.Name, err, wait)
 
-		<-time.After(wait)
+		select {
+		case <-m.ctx.Done():
+			logger.Log.Errorf("Bootstrap job for %s canceled",
+				job.Name)
+			cancel()
+			return
+		case <-time.After(wait):
+		}
 		cancel()
 	}
 }
@@ -103,6 +123,8 @@ func (m *JobManager) worker(id int) {
 		case <-time.After(10 * time.Second):
 			logger.Log.Debugf("Worker %d was blocked for more than 10s, exiting", id)
 			return
+		case <-m.ctx.Done():
+			return
 		}
 	}
 }
@@ -115,4 +137,9 @@ func (m *JobManager) Start() {
 		m.queue <- job
 	}
 	m.scheduler.Start()
+}
+
+func (m *JobManager) Stop() {
+	m.cancel()
+	_ = m.scheduler.Shutdown()
 }

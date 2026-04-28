@@ -18,6 +18,10 @@ import (
 	"software.sslmate.com/src/go-pkcs12"
 )
 
+type ContextKey string
+
+const JobIDContextKey ContextKey = "job_id"
+
 type CertJob struct {
 	Name         string
 	APIHostURL   string
@@ -46,17 +50,17 @@ func compareKeys(oldKey, newKey any) (bool, error) {
 		return false, nil
 	}
 
-	oldPEM, err := crypto.EncodePrivateKeyPEM(oldKey)
+	oldKeyBytes, err := x509.MarshalPKCS8PrivateKey(oldKey)
 	if err != nil {
 		return false, err
 	}
 
-	newPEM, err := crypto.EncodePrivateKeyPEM(newKey)
+	newKeyBytes, err := x509.MarshalPKCS8PrivateKey(newKey)
 	if err != nil {
 		return false, err
 	}
 
-	return crypto.ComparePrivateKeys(oldPEM, newPEM), nil
+	return crypto.ComparePrivateKeys(oldKeyBytes, newKeyBytes), nil
 }
 
 func compareCertificates(oldCerts, newCerts []*x509.Certificate) bool {
@@ -102,7 +106,7 @@ func compare(oldCS, newCS *CompareStruct) (bool, error) {
 func (j *CertJob) Run(ctx context.Context) error {
 	logFields := logrus.Fields{
 		"job":    j.Name,
-		"worker": ctx.Value("worker"),
+		"worker": ctx.Value(JobIDContextKey),
 	}
 	logger.Log.WithFields(logFields).Info("Running fetch job")
 	cw := new(api.CertWarden{Context: ctx, HostURL: j.APIHostURL, Client: &http.Client{}})

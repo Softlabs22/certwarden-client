@@ -88,11 +88,11 @@ func TestComparePrivateKeysNotEqual(t *testing.T) {
 		Headers: map[string]string{},
 	}
 
-	assertions.False(ComparePrivateKeys(nil, &rightPEMBlock))
-	assertions.False(ComparePrivateKeys(&rightPEMBlock, nil))
+	assertions.False(ComparePrivateKeys(nil, rightPEMBlock.Bytes))
+	assertions.False(ComparePrivateKeys(rightPEMBlock.Bytes, nil))
 
-	assertions.False(ComparePrivateKeys(&leftPEMBlock, &rightPEMBlock))
-	assertions.False(ComparePrivateKeys(&rightPEMBlock, &leftPEMBlock))
+	assertions.False(ComparePrivateKeys(leftPEMBlock.Bytes, rightPEMBlock.Bytes))
+	assertions.False(ComparePrivateKeys(rightPEMBlock.Bytes, leftPEMBlock.Bytes))
 }
 
 func TestComparePrivateKeysEqual(t *testing.T) {
@@ -111,8 +111,8 @@ func TestComparePrivateKeysEqual(t *testing.T) {
 		Headers: map[string]string{},
 	}
 	// same pointer
-	assertions.True(ComparePrivateKeys(&leftPEMBlock, &leftPEMBlock))
+	assertions.True(ComparePrivateKeys(leftPEMBlock.Bytes, leftPEMBlock.Bytes))
 	// both equal
-	assertions.True(ComparePrivateKeys(&leftPEMBlock, &rightPEMBlock))
-	assertions.True(ComparePrivateKeys(&rightPEMBlock, &leftPEMBlock))
+	assertions.True(ComparePrivateKeys(leftPEMBlock.Bytes, rightPEMBlock.Bytes))
+	assertions.True(ComparePrivateKeys(rightPEMBlock.Bytes, leftPEMBlock.Bytes))
 }

@@ -91,6 +91,11 @@ func TestCertKindUnmarshalYAML(t *testing.T) {
 		requirements.NoErrorf(err, "failed to unmarshal CertKind: %s", err)
 		assertions.Equalf(value, kind, "invalid CertKind after unmarshal")
 	}
+
+	valueText.Value = "privatecertchian"
+	var kind CertKind = -1
+	err := kind.UnmarshalYAML(&valueText)
+	assertions.Error(err)
 }
 
 func TestOSFileModeUnmarshalYAML(t *testing.T) {

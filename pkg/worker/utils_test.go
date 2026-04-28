@@ -2,6 +2,7 @@ package worker
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,8 +34,9 @@ func TestLoadFromFile(t *testing.T) {
 func TestSaveToFileBadPath(t *testing.T) {
 	assertions := assert.New(t)
 
+	tempDir := t.TempDir()
 	data := []byte("Lorem ipsum dolor sit amet")
-	err := saveToFile("/tmp/nonexistent/path/here", data, new(os.FileMode(0640)))
+	err := saveToFile(filepath.Join(tempDir, "nonexistent", "path"), data, new(os.FileMode(0640)))
 	assertions.Error(err)
 }
 
@@ -42,18 +44,20 @@ func TestSaveToFile(t *testing.T) {
 	assertions := assert.New(t)
 	requirements := require.New(t)
 
+	tempDir := t.TempDir()
+	tempFile := filepath.Join(tempDir, "test.pem")
+
 	data := []byte("Lorem ipsum dolor sit amet")
-	err := saveToFile("/tmp/test.bin", data, new(os.FileMode(0640)))
+	err := saveToFile(tempFile, data, new(os.FileMode(0640)))
 	requirements.NoError(err)
-	requirements.FileExists("/tmp/test.bin")
-	stat, err := os.Stat("/tmp/test.bin")
+	requirements.FileExists(tempFile)
+	stat, err := os.Stat(tempFile)
 	requirements.NoError(err)
 	assertions.Equal(os.FileMode(0640), stat.Mode())
 
-	readBack, err := os.ReadFile("/tmp/test.bin")
+	readBack, err := os.ReadFile(tempFile)
 	requirements.NoError(err)
 	assertions.Equal(data, readBack)
-	_ = os.Remove("/tmp/test.bin")
 }
 
 func TestLoadCertKeyFromFileBadPath(t *testing.T) {
@@ -134,9 +138,12 @@ func TestSaveCertKeyChainToFileMalformedData(t *testing.T) {
 
 	keys[0] = nil
 
-	err = saveCertKeyChainToFile("/tmp/test.pem", certs, keys, new(os.FileMode(0640)))
+	tempDir := t.TempDir()
+	tempFile := filepath.Join(tempDir, "test.pem")
+
+	err = saveCertKeyChainToFile(tempFile, certs, keys, new(os.FileMode(0640)))
 	assertions.Error(err)
-	assertions.NoFileExists("/tmp/test.pem")
+	assertions.NoFileExists(tempFile)
 }
 
 func TestSaveCertKeyChainToFile(t *testing.T) {
@@ -148,16 +155,18 @@ func TestSaveCertKeyChainToFile(t *testing.T) {
 	assertions.NotNil(certs)
 	assertions.NotNil(keys)
 
-	err = saveCertKeyChainToFile("/tmp/test.pem", certs, keys, new(os.FileMode(0640)))
+	tempDir := t.TempDir()
+	tempFile := filepath.Join(tempDir, "test.pem")
+
+	err = saveCertKeyChainToFile(tempFile, certs, keys, new(os.FileMode(0640)))
 	requirements.NoError(err)
-	requirements.FileExists("/tmp/test.pem")
-	stat, err := os.Stat("/tmp/test.pem")
+	requirements.FileExists(tempFile)
+	stat, err := os.Stat(tempFile)
 	requirements.NoError(err)
 	assertions.Equal(os.FileMode(0640), stat.Mode())
 
 	origContents, _ := os.ReadFile("../../test/pem/testKeyPair.pem")
-	newContents, _ := os.ReadFile("/tmp/test.pem")
-	_ = os.Remove("/tmp/test.pem")
+	newContents, _ := os.ReadFile(tempFile)
 
 	assertions.Equal(origContents, newContents)
 }

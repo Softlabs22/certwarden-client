@@ -23,12 +23,13 @@ func signalName(s os.Signal) string {
 	return s.String()
 }
 
-func waitForSignal() {
+func waitForSignal(manager *scheduler.JobManager) {
 	schan := make(chan os.Signal, 1)
 	signal.Notify(schan, syscall.SIGINT, syscall.SIGTERM)
 
 	sig := <-schan
-	logger.Log.Infof("Received %s (%v)", signalName(sig), sig)
+	logger.Log.Infof("Received %s (%v), shutting down", signalName(sig), sig)
+	manager.Stop()
 }
 
 func Run(conf *config.Config) error {
@@ -66,7 +67,6 @@ func Run(conf *config.Config) error {
 	manager.Start()
 
 	logger.Log.Info("Ready, listening for signals")
-	waitForSignal()
-	logger.Log.Info("Shutting down")
+	waitForSignal(manager)
 	return nil
 }

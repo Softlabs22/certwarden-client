@@ -92,18 +92,22 @@ func loadFromFile(path string) ([]byte, error) {
 }
 
 func saveToFile(path string, data []byte, perms *os.FileMode) error {
-	outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, *perms)
+	outFile, err := os.OpenFile(path+".tmp", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, *perms)
 	if err != nil {
 		return err
 	}
-	defer func(outFile *os.File) {
-		_ = outFile.Close()
-	}(outFile)
 	_, err = outFile.Write(data)
 	if err != nil {
+		_ = outFile.Close()
 		return err
+
 	}
 	_ = outFile.Sync()
+	_ = outFile.Close()
+	err = os.Rename(path+".tmp", path)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

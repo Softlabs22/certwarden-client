@@ -9,13 +9,14 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,6 +26,67 @@ const (
 	TestCertToken = "test-cert-token"
 	TestKeyToken  = "test-key-token"
 )
+
+func setupTestServer(t *testing.T, route, credentials, fileToServe string) *httptest.Server {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case route:
+			auth := r.Header.Get("X-API-Key")
+			if auth != credentials {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, err := w.Write([]byte("unauthorized"))
+				require.NoError(t, err)
+			} else {
+				content, err := os.ReadFile(fileToServe)
+				require.NoError(t, err)
+				w.WriteHeader(http.StatusOK)
+				_, err = w.Write(content)
+				require.NoError(t, err)
+			}
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			_, err := w.Write([]byte("Not Found"))
+			require.NoError(t, err)
+		}
+	}))
+	return server
+}
+
+func checkFileCreated(t *testing.T, job *CertJob, targetFile, flagFile string, TargetFileMode fs.FileMode) {
+	assertions := assert.New(t)
+	requirements := require.New(t)
+
+	ctx := context.Background()
+	err := job.Run(ctx)
+	assertions.NoError(err)
+	requirements.FileExists(targetFile)
+	stat, _ := os.Stat(targetFile)
+	assertions.Equal(TargetFileMode, stat.Mode())
+	assertions.FileExists(flagFile)
+}
+
+func checkFileChanged(t *testing.T, job *CertJob, targetFile, flagFile string, TargetFileMode fs.FileMode, shouldChange bool) {
+	assertions := assert.New(t)
+	requirements := require.New(t)
+
+	ctx := context.Background()
+	oldFile, err := os.ReadFile(targetFile)
+	requirements.NoError(err)
+
+	err = job.Run(ctx)
+	assertions.NoError(err)
+	newFile, err := os.ReadFile(targetFile)
+	requirements.NoError(err)
+	stat, _ := os.Stat(targetFile)
+	if shouldChange {
+		assertions.NotEqual(oldFile, newFile)
+		assertions.FileExists(flagFile)
+	} else {
+		assertions.Equal(oldFile, newFile)
+		assertions.NoFileExists(flagFile)
+	}
+	assertions.Equal(TargetFileMode, stat.Mode())
+}
 
 func TestCompareKeysEqual(t *testing.T) {
 	assertions := assert.New(t)
@@ -166,67 +228,53 @@ func TestCompareCertificatesNotEqual(t *testing.T) {
 }
 
 func TestWorkerPrivateKey(t *testing.T) {
-	assertions := assert.New(t)
-	requirements := require.New(t)
+	tempDir := t.TempDir()
+	pemFile := filepath.Join(tempDir, "test.pem")
+	flagFile := filepath.Join(tempDir, "refresh.ok")
 
-	privateKeyFile, err := os.ReadFile("../../test/pem/testPKCS8RSAPrivateKey.pem")
-	requirements.NoErrorf(err, "error reading private key file: %s", err)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case api.DownloadAPIPath + api.PrivateKeysAPIPath + "test":
-			auth := r.Header.Get("X-API-Key")
-			if auth != TestKeyToken {
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte("unauthorized"))
-			} else {
-				w.WriteHeader(http.StatusOK)
-				w.Write(privateKeyFile)
-			}
-		default:
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Not Found"))
-		}
-	}))
+	server := setupTestServer(t,
+		api.DownloadAPIPath+api.PrivateKeysAPIPath+"test",
+		TestKeyToken,
+		"../../test/pem/testPKCS8RSAPrivateKey.pem",
+	)
 	defer server.Close()
 
-	ctx := context.Background()
 	job := CertJob{
 		Name:         "test",
 		APIHostURL:   server.URL,
 		CertToken:    TestCertToken,
 		KeyToken:     TestKeyToken,
-		OnRefreshCmd: "touch /tmp/refresh.ok",
-		SavePath:     "/tmp/",
+		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
+		SavePath:     tempDir,
 		Filename:     "test.pem",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindPrivateKey,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	assertions.FileExists("/tmp/test.pem")
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
-	defer func() {
-		_ = os.Remove("/tmp/test.pem")
-	}()
 
-	oldStat, _ := os.Stat("/tmp/test.pem")
-	assertions.Equal(os.FileMode(0640), oldStat.Mode())
+	checkFileCreated(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+	)
+	_ = os.Remove(flagFile)
 
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/test.pem")
-	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
-	assertions.NoFileExists("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+		false,
+	)
 
 	newKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	rawKey, _ := x509.MarshalPKCS8PrivateKey(newKey)
 	_ = os.WriteFile(
-		"/tmp/test.pem",
+		pemFile,
 		pem.EncodeToMemory(
 			&pem.Block{
 				Type:  "PRIVATE KEY",
@@ -236,79 +284,66 @@ func TestWorkerPrivateKey(t *testing.T) {
 		fs.FileMode(0755),
 	)
 
-	oldStat, _ = os.Stat("/tmp/test.pem")
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/test.pem")
-	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
-	assertions.Equal(os.FileMode(0640), newStat.Mode())
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+		true,
+	)
 }
 
 func TestWorkerCertificate(t *testing.T) {
-	assertions := assert.New(t)
 	requirements := require.New(t)
 
-	certificateFile, err := os.ReadFile("../../test/pem/testCertificate.pem")
-	requirements.NoErrorf(err, "error reading certificate file: %s", err)
+	tempDir := t.TempDir()
+	pemFile := filepath.Join(tempDir, "test.pem")
+	flagFile := filepath.Join(tempDir, "refresh.ok")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case api.DownloadAPIPath + api.CertificatesAPIPath + "test":
-			auth := r.Header.Get("X-API-Key")
-			if auth != TestCertToken {
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte("unauthorized"))
-			} else {
-				w.WriteHeader(http.StatusOK)
-				w.Write(certificateFile)
-			}
-		default:
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Not Found"))
-		}
-	}))
+	server := setupTestServer(t,
+		api.DownloadAPIPath+api.CertificatesAPIPath+"test",
+		TestCertToken,
+		"../../test/pem/testCertificate.pem",
+	)
 	defer server.Close()
 
-	ctx := context.Background()
 	job := CertJob{
 		Name:         "test",
 		APIHostURL:   server.URL,
 		CertToken:    TestCertToken,
 		KeyToken:     TestKeyToken,
-		OnRefreshCmd: "touch /tmp/refresh.ok",
-		SavePath:     "/tmp/",
+		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
+		SavePath:     tempDir,
 		Filename:     "test.pem",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindCertificate,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	assertions.FileExists("/tmp/test.pem")
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
-	defer func() {
-		_ = os.Remove("/tmp/test.pem")
-	}()
 
-	oldStat, _ := os.Stat("/tmp/test.pem")
-	assertions.Equal(os.FileMode(0640), oldStat.Mode())
+	checkFileCreated(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+	)
+	_ = os.Remove(flagFile)
 
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/test.pem")
-	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
-	assertions.NoFileExists("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+		false,
+	)
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
 
-	fout, err := os.Create("/tmp/test.pem")
+	fout, err := os.Create(pemFile)
 	requirements.NoError(err)
 
 	_, err = io.Copy(fout, fin)
@@ -316,79 +351,66 @@ func TestWorkerCertificate(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
-	oldStat, _ = os.Stat("/tmp/test.pem")
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/test.pem")
-	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
-	assertions.Equal(os.FileMode(0640), newStat.Mode())
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+		true,
+	)
 }
 
 func TestWorkerPrivateCertChain(t *testing.T) {
-	assertions := assert.New(t)
 	requirements := require.New(t)
 
-	fullChainFile, err := os.ReadFile("../../test/pem/testFullChain.pem")
-	requirements.NoErrorf(err, "error reading certificate file: %s", err)
+	tempDir := t.TempDir()
+	pemFile := filepath.Join(tempDir, "test.pem")
+	flagFile := filepath.Join(tempDir, "refresh.ok")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case api.DownloadAPIPath + api.PrivateCertChainsAPIPath + "test":
-			auth := r.Header.Get("X-API-Key")
-			if auth != TestCertToken+"."+TestKeyToken {
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte("unauthorized"))
-			} else {
-				w.WriteHeader(http.StatusOK)
-				w.Write(fullChainFile)
-			}
-		default:
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Not Found"))
-		}
-	}))
+	server := setupTestServer(t,
+		api.DownloadAPIPath+api.PrivateCertChainsAPIPath+"test",
+		TestCertToken+"."+TestKeyToken,
+		"../../test/pem/testFullChain.pem",
+	)
 	defer server.Close()
 
-	ctx := context.Background()
 	job := CertJob{
 		Name:         "test",
 		APIHostURL:   server.URL,
 		CertToken:    TestCertToken,
 		KeyToken:     TestKeyToken,
-		OnRefreshCmd: "touch /tmp/refresh.ok",
-		SavePath:     "/tmp/",
+		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
+		SavePath:     tempDir,
 		Filename:     "test.pem",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindPrivateCertChain,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	assertions.FileExists("/tmp/test.pem")
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
-	defer func() {
-		_ = os.Remove("/tmp/test.pem")
-	}()
 
-	oldStat, _ := os.Stat("/tmp/test.pem")
-	assertions.Equal(os.FileMode(0640), oldStat.Mode())
+	checkFileCreated(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+	)
+	_ = os.Remove(flagFile)
 
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/test.pem")
-	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
-	assertions.NoFileExists("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+		false,
+	)
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
 
-	fout, err := os.Create("/tmp/test.pem")
+	fout, err := os.Create(pemFile)
 	requirements.NoError(err)
 
 	_, err = io.Copy(fout, fin)
@@ -396,157 +418,129 @@ func TestWorkerPrivateCertChain(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
-	oldStat, _ = os.Stat("/tmp/test.pem")
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/test.pem")
-	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
-	assertions.Equal(os.FileMode(0640), newStat.Mode())
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+		true,
+	)
 }
 
 func TestWorkerPFX(t *testing.T) {
-	assertions := assert.New(t)
 	requirements := require.New(t)
 
-	pfxFile, err := os.ReadFile("../../test/pem/testPFX.p12")
-	requirements.NoErrorf(err, "error reading PFX file %s", err)
+	tempDir := t.TempDir()
+	pfxFile := filepath.Join(tempDir, "testpfx.p12")
+	flagFile := filepath.Join(tempDir, "refresh.ok")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case api.DownloadAPIPath + api.PFXAPIPath + "test":
-			auth := r.Header.Get("X-API-Key")
-			if auth != TestCertToken+"."+TestKeyToken {
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte("unauthorized"))
-			} else {
-				w.WriteHeader(http.StatusOK)
-				w.Write(pfxFile)
-			}
-		default:
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Not Found"))
-		}
-	}))
+	server := setupTestServer(t,
+		api.DownloadAPIPath+api.PFXAPIPath+"test",
+		TestCertToken+"."+TestKeyToken,
+		"../../test/pem/testPFX.p12",
+	)
 	defer server.Close()
 
-	ctx := context.Background()
 	job := CertJob{
 		Name:         "test",
 		APIHostURL:   server.URL,
 		CertToken:    TestCertToken,
 		KeyToken:     TestKeyToken,
-		OnRefreshCmd: "touch /tmp/refresh.ok",
-		SavePath:     "/tmp/",
+		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
+		SavePath:     tempDir,
 		Filename:     "testpfx.p12",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindPFX,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	assertions.FileExists("/tmp/testpfx.p12")
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
-	defer func() {
-		_ = os.Remove("/tmp/testpfx.p12")
-	}()
+	checkFileCreated(
+		t,
+		&job,
+		pfxFile,
+		flagFile,
+		os.FileMode(0640),
+	)
+	_ = os.Remove(flagFile)
 
-	oldStat, _ := os.Stat("/tmp/testpfx.p12")
-	assertions.Equal(os.FileMode(0640), oldStat.Mode())
-
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/testpfx.p12")
-	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
-	assertions.NoFileExists("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pfxFile,
+		flagFile,
+		os.FileMode(0640),
+		false,
+	)
 
 	fin, err := os.Open("../../test/pem/testAnotherPFX.p12")
 	requirements.NoError(err)
-	fout, err := os.Create("/tmp/testpfx.p12")
+	fout, err := os.Create(pfxFile)
 	requirements.NoError(err)
 	_, err = io.Copy(fout, fin)
 	requirements.NoError(err)
 	_ = fin.Close()
 	_ = fout.Close()
 
-	oldStat, _ = os.Stat("/tmp/testpfx.p12")
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/testpfx.p12")
-	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
-	assertions.Equal(os.FileMode(0640), newStat.Mode())
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pfxFile,
+		flagFile,
+		os.FileMode(0640),
+		true,
+	)
 }
 
 func TestWorkerPrivateCert(t *testing.T) {
-	assertions := assert.New(t)
 	requirements := require.New(t)
 
-	keyPairFile, err := os.ReadFile("../../test/pem/testKeyPair.pem")
-	requirements.NoErrorf(err, "error reading certificate file: %s", err)
+	tempDir := t.TempDir()
+	pemFile := filepath.Join(tempDir, "test.pem")
+	flagFile := filepath.Join(tempDir, "refresh.ok")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case api.DownloadAPIPath + api.PrivateCertsAPIPath + "test":
-			auth := r.Header.Get("X-API-Key")
-			if auth != TestCertToken+"."+TestKeyToken {
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte("unauthorized"))
-			} else {
-				w.WriteHeader(http.StatusOK)
-				w.Write(keyPairFile)
-			}
-		default:
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Not Found"))
-		}
-	}))
+	server := setupTestServer(t,
+		api.DownloadAPIPath+api.PrivateCertsAPIPath+"test",
+		TestCertToken+"."+TestKeyToken,
+		"../../test/pem/testKeyPair.pem",
+	)
 	defer server.Close()
 
-	ctx := context.Background()
 	job := CertJob{
 		Name:         "test",
 		APIHostURL:   server.URL,
 		CertToken:    TestCertToken,
 		KeyToken:     TestKeyToken,
-		OnRefreshCmd: "touch /tmp/refresh.ok",
-		SavePath:     "/tmp/",
+		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
+		SavePath:     tempDir,
 		Filename:     "test.pem",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindPrivateCert,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	assertions.FileExists("/tmp/test.pem")
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
-	defer func() {
-		_ = os.Remove("/tmp/test.pem")
-	}()
+	checkFileCreated(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+	)
+	_ = os.Remove(flagFile)
 
-	oldStat, _ := os.Stat("/tmp/test.pem")
-	assertions.Equal(os.FileMode(0640), oldStat.Mode())
-
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/test.pem")
-	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
-	assertions.NoFileExists("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+		false,
+	)
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
 
-	fout, err := os.Create("/tmp/test.pem")
+	fout, err := os.Create(pemFile)
 	requirements.NoError(err)
 
 	_, err = io.Copy(fout, fin)
@@ -554,79 +548,65 @@ func TestWorkerPrivateCert(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
-	oldStat, _ = os.Stat("/tmp/test.pem")
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/test.pem")
-	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
-	assertions.Equal(os.FileMode(0640), newStat.Mode())
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+		true,
+	)
 }
 
 func TestWorkerRootChain(t *testing.T) {
-	assertions := assert.New(t)
 	requirements := require.New(t)
 
-	rootCertFile, err := os.ReadFile("../../test/pem/testCACert.pem")
-	requirements.NoErrorf(err, "error reading certificate file: %s", err)
+	tempDir := t.TempDir()
+	pemFile := filepath.Join(tempDir, "test.pem")
+	flagFile := filepath.Join(tempDir, "refresh.ok")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case api.DownloadAPIPath + api.CertRootChainsAPIPath + "test":
-			auth := r.Header.Get("X-API-Key")
-			if auth != TestCertToken {
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte("unauthorized"))
-			} else {
-				w.WriteHeader(http.StatusOK)
-				w.Write(rootCertFile)
-			}
-		default:
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Not Found"))
-		}
-	}))
+	server := setupTestServer(t,
+		api.DownloadAPIPath+api.CertRootChainsAPIPath+"test",
+		TestCertToken,
+		"../../test/pem/testCACert.pem",
+	)
 	defer server.Close()
 
-	ctx := context.Background()
 	job := CertJob{
 		Name:         "test",
 		APIHostURL:   server.URL,
 		CertToken:    TestCertToken,
 		KeyToken:     TestKeyToken,
-		OnRefreshCmd: "touch /tmp/refresh.ok",
-		SavePath:     "/tmp/",
+		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
+		SavePath:     tempDir,
 		Filename:     "test.pem",
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindCertRootChain,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	assertions.FileExists("/tmp/test.pem")
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
-	defer func() {
-		_ = os.Remove("/tmp/test.pem")
-	}()
+	checkFileCreated(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+	)
+	_ = os.Remove(flagFile)
 
-	oldStat, _ := os.Stat("/tmp/test.pem")
-	assertions.Equal(os.FileMode(0640), oldStat.Mode())
-
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ := os.Stat("/tmp/test.pem")
-	assertions.Equal(oldStat.ModTime(), newStat.ModTime())
-	assertions.NoFileExists("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+		false,
+	)
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
 
-	fout, err := os.Create("/tmp/test.pem")
+	fout, err := os.Create(pemFile)
 	requirements.NoError(err)
 
 	_, err = io.Copy(fout, fin)
@@ -634,13 +614,12 @@ func TestWorkerRootChain(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
-	oldStat, _ = os.Stat("/tmp/test.pem")
-	time.Sleep(time.Millisecond * 100)
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newStat, _ = os.Stat("/tmp/test.pem")
-	assertions.NotEqual(oldStat.ModTime(), newStat.ModTime())
-	assertions.Equal(os.FileMode(0640), newStat.Mode())
-	assertions.FileExists("/tmp/refresh.ok")
-	_ = os.Remove("/tmp/refresh.ok")
+	checkFileChanged(
+		t,
+		&job,
+		pemFile,
+		flagFile,
+		os.FileMode(0640),
+		true,
+	)
 }

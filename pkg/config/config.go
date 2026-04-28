@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"fortio.org/duration"
@@ -113,7 +114,11 @@ func (k *CertKind) UnmarshalYAML(value *yaml.Node) error {
 	if err := value.Decode(&kind); err != nil {
 		return err
 	}
-	*k = certKindName[kind]
+	v, ok := certKindName[kind]
+	if !ok {
+		return fmt.Errorf("unknown kind: %q", kind)
+	}
+	*k = v
 	return nil
 }
 
@@ -207,5 +212,6 @@ func (c *Config) Load(path string) error {
 	if c.Global.CertWardenURL == "" {
 		return fmt.Errorf("global.certWardenURL is required")
 	}
+	c.Global.CertWardenURL = strings.TrimRight(c.Global.CertWardenURL, "/")
 	return nil
 }
