@@ -37,7 +37,7 @@ build:arm64:
 
 publish:
   stage: publish
-  image: alpine:latest
+  image: 681486450310.dkr.ecr.eu-central-1.amazonaws.com/docker-hub/library/alpine:latest
   tags:
     - docker-light
   needs:

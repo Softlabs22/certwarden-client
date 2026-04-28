@@ -1,0 +1,70 @@
+name: Create Debian package and release
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+        arch:
+          - amd64
+          - arm64
+        exclude:
+          - os: ubuntu-24.04-arm
+            arch: amd64
+          - os: ubuntu-24.04
+            arch: arm64
+    container:
+      image: ghcr.io/softlabs22/golang-deb-builder:latest
+    steps:
+      - name: Set OS name
+        id: os-name
+        run: echo "GOOS=$(go env GOOS)" >> "$GITHUB_OUTPUT"
+      - name: Check out repository code
+        uses: actions/checkout@v6
+      - name: Build package
+        run: debuild -us -uc
+      - name: Gather artifacts
+        run: |
+          mv ../*${{ matrix.arch}}.deb ./
+          mv ./obj-*/bin/certwarden-client ./certwarden-client-${{ steps.os-name.outputs.GOOS }}-${{ matrix.arch }}
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.arch }}
+          path: "*${{ matrix.arch }}.deb"
+          retention-days: 1
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ steps.os-name.outputs.GOOS }}-${{ matrix.arch }}
+          path: "./certwarden-client-${{ steps.os-name.outputs.GOOS }}-${{ matrix.arch }}"
+          retention-days: 1
+  publish:
+    runs-on: ubuntu-24.04
+    needs:
+     - package
+    steps:
+      - name: Download package artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: package
+          pattern: package-*
+          merge-multiple: true
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: binary
+          pattern: binary-*
+          merge-multiple: true
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "./package/*.deb,./binary/certwarden-client*"
