@@ -508,11 +508,29 @@ func TestWorkerPrivateCertChain(t *testing.T) {
 	_ = os.Remove(flagFile)
 
 	job.SplitMode = true
-	job.Filename = "prefix"
 	job.Permissions = new(os.FileMode(0644))
-	certFile := filepath.Join(tempDir, "prefix_"+splitFullchainFilename)
-	keyFile := filepath.Join(tempDir, "prefix_"+splitKeyFilename)
+	job.Filename = ""
+	certFile := filepath.Join(tempDir, splitFullchainFilename)
+	keyFile := filepath.Join(tempDir, splitKeyFilename)
 
+	err = job.Run(ctx)
+	requirements.NoError(err)
+	checkFileCreated(
+		t,
+		certFile,
+		os.FileMode(0644),
+	)
+	checkFileCreated(
+		t,
+		keyFile,
+		os.FileMode(0640),
+	)
+	assertions.FileExists(flagFile)
+	_ = os.Remove(flagFile)
+
+	job.Filename = "someprefix"
+	certFile = filepath.Join(tempDir, job.Filename+"_"+splitFullchainFilename)
+	keyFile = filepath.Join(tempDir, job.Filename+"_"+splitKeyFilename)
 	err = job.Run(ctx)
 	requirements.NoError(err)
 	checkFileCreated(
@@ -760,11 +778,29 @@ func TestWorkerPrivateCert(t *testing.T) {
 	_ = os.Remove(flagFile)
 
 	job.SplitMode = true
-	job.Filename = "prefix"
+	job.Filename = ""
 	job.Permissions = new(os.FileMode(0644))
-	certFile := filepath.Join(tempDir, "prefix_"+splitCertFilename)
-	keyFile := filepath.Join(tempDir, "prefix_"+splitKeyFilename)
+	certFile := filepath.Join(tempDir, splitCertFilename)
+	keyFile := filepath.Join(tempDir, splitKeyFilename)
 
+	err = job.Run(ctx)
+	requirements.NoError(err)
+	checkFileCreated(
+		t,
+		certFile,
+		os.FileMode(0644),
+	)
+	checkFileCreated(
+		t,
+		keyFile,
+		os.FileMode(0640),
+	)
+	assertions.FileExists(flagFile)
+	_ = os.Remove(flagFile)
+
+	job.Filename = "someprefix"
+	certFile = filepath.Join(tempDir, job.Filename+"_"+splitCertFilename)
+	keyFile = filepath.Join(tempDir, job.Filename+"_"+splitKeyFilename)
 	err = job.Run(ctx)
 	requirements.NoError(err)
 	checkFileCreated(

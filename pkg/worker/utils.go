@@ -160,7 +160,17 @@ func saveCertKeyChainToFile(path string, certs []*x509.Certificate, keys []any, 
 	}
 
 	if splitMode {
-		baseDir, filePrefix := filepath.Split(path)
+		var baseDir, filePrefix string
+		stat, err := os.Stat(path)
+		if err == nil && stat.IsDir() {
+			filePrefix = ""
+			baseDir = path
+		} else if errors.Is(err, os.ErrNotExist) {
+			baseDir, filePrefix = filepath.Split(path)
+		} else {
+			return err
+		}
+
 		var certFilename string
 		keyFilename := splitKeyFilename
 		switch jobKind {
@@ -179,7 +189,7 @@ func saveCertKeyChainToFile(path string, certs []*x509.Certificate, keys []any, 
 
 		// Enforce safer permissions for private key
 		keyPerms := new(*perms & 0740)
-		err := savePEMFunc(keyPEMBlocks, filepath.Join(baseDir, keyFilename), keyPerms)
+		err = savePEMFunc(keyPEMBlocks, filepath.Join(baseDir, keyFilename), keyPerms)
 		if err != nil {
 			return err
 		}
@@ -198,7 +208,17 @@ func loadCertKeyChainFromFile(path string, splitMode bool, jobKind config.CertKi
 	var pemData []byte
 	var err error
 	if splitMode {
-		baseDir, filePrefix := filepath.Split(path)
+		var baseDir, filePrefix string
+		stat, err := os.Stat(path)
+		if err == nil && stat.IsDir() {
+			filePrefix = ""
+			baseDir = path
+		} else if errors.Is(err, os.ErrNotExist) {
+			baseDir, filePrefix = filepath.Split(path)
+		} else {
+			return nil, nil, err
+		}
+
 		var certFilename string
 		keyFilename := splitKeyFilename
 		switch jobKind {
