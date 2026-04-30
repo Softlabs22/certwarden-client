@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -52,40 +53,29 @@ func setupTestServer(t *testing.T, route, credentials, fileToServe string) *http
 	return server
 }
 
-func checkFileCreated(t *testing.T, job *CertJob, targetFile, flagFile string, TargetFileMode fs.FileMode) {
+func checkFileCreated(t *testing.T, targetFile string, targetFileMode fs.FileMode) {
 	assertions := assert.New(t)
 	requirements := require.New(t)
 
-	ctx := context.Background()
-	err := job.Run(ctx)
-	assertions.NoError(err)
 	requirements.FileExists(targetFile)
 	stat, _ := os.Stat(targetFile)
-	assertions.Equal(TargetFileMode, stat.Mode())
-	assertions.FileExists(flagFile)
+	assertions.Equal(targetFileMode, stat.Mode())
 }
 
-func checkFileChanged(t *testing.T, job *CertJob, targetFile, flagFile string, TargetFileMode fs.FileMode, shouldChange bool) {
+func checkFileChanged(t *testing.T, oldHash [32]byte, newFile string, targetFileMode fs.FileMode, shouldChange bool) {
 	assertions := assert.New(t)
 	requirements := require.New(t)
 
-	ctx := context.Background()
-	oldFile, err := os.ReadFile(targetFile)
+	data, err := os.ReadFile(newFile)
 	requirements.NoError(err)
-
-	err = job.Run(ctx)
-	assertions.NoError(err)
-	newFile, err := os.ReadFile(targetFile)
-	requirements.NoError(err)
-	stat, _ := os.Stat(targetFile)
+	newHash := sha256.Sum256(data)
 	if shouldChange {
-		assertions.NotEqual(oldFile, newFile)
-		assertions.FileExists(flagFile)
+		assertions.NotEqual(oldHash, newHash)
 	} else {
-		assertions.Equal(oldFile, newFile)
-		assertions.NoFileExists(flagFile)
+		assertions.Equal(oldHash, newHash)
 	}
-	assertions.Equal(TargetFileMode, stat.Mode())
+	stat, _ := os.Stat(newFile)
+	assertions.Equal(targetFileMode, stat.Mode())
 }
 
 func TestCompareKeysEqual(t *testing.T) {
@@ -221,13 +211,60 @@ func TestCompareCertificatesNotEqual(t *testing.T) {
 	assertions.False(compareCertificates([]*x509.Certificate{certs[0]}, certs))
 	assertions.False(compareCertificates(certs, []*x509.Certificate{certs[0]}))
 
+	assertions.False(compareCertificates(certs, []*x509.Certificate{certs[0], certs[0], certs[1]}))
+	assertions.False(compareCertificates([]*x509.Certificate{certs[0], certs[0], certs[1]}, certs))
+
 	anotherChain := []*x509.Certificate{certs[0], certs[0]}
 
 	assertions.False(compareCertificates(certs, anotherChain))
 	assertions.False(compareCertificates(anotherChain, certs))
 }
 
+func TestWorkerBadRefreshCommand(t *testing.T) {
+	assertions := assert.New(t)
+	requirements := require.New(t)
+
+	tempDir := t.TempDir()
+	pemFile := filepath.Join(tempDir, "test.pem")
+
+	server := setupTestServer(t,
+		api.DownloadAPIPath+api.PrivateKeysAPIPath+"test",
+		TestKeyToken,
+		"../../test/pem/testPKCS8RSAPrivateKey.pem",
+	)
+	defer server.Close()
+
+	job := CertJob{
+		Name:         "test",
+		APIHostURL:   server.URL,
+		CertToken:    TestCertToken,
+		KeyToken:     TestKeyToken,
+		OnRefreshCmd: "false",
+		SavePath:     tempDir,
+		Filename:     "test.pem",
+		SplitMode:    false,
+		Permissions:  new(os.FileMode(0640)),
+		Kind:         config.KindPrivateKey,
+		RunInterval:  3600,
+		JobTimeout:   5,
+	}
+	ctx := context.Background()
+
+	err := job.Run(ctx)
+	requirements.NoError(err)
+	assertions.FileExists(pemFile)
+	_ = os.Remove(pemFile)
+
+	job.OnRefreshCmd = "kill -9 $$"
+	err = job.Run(ctx)
+	requirements.NoError(err)
+	assertions.FileExists(pemFile)
+}
+
 func TestWorkerPrivateKey(t *testing.T) {
+	assertions := assert.New(t)
+	requirements := require.New(t)
+
 	tempDir := t.TempDir()
 	pemFile := filepath.Join(tempDir, "test.pem")
 	flagFile := filepath.Join(tempDir, "refresh.ok")
@@ -247,29 +284,37 @@ func TestWorkerPrivateKey(t *testing.T) {
 		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
 		SavePath:     tempDir,
 		Filename:     "test.pem",
+		SplitMode:    false,
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindPrivateKey,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
+	ctx := context.Background()
 
+	err := job.Run(ctx)
+	requirements.NoError(err)
 	checkFileCreated(
 		t,
-		&job,
 		pemFile,
-		flagFile,
 		os.FileMode(0640),
 	)
+	data, err := os.ReadFile(pemFile)
+	require.NoError(t, err)
+	oldHash := sha256.Sum256(data)
+	assertions.FileExists(flagFile)
 	_ = os.Remove(flagFile)
 
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pemFile,
-		flagFile,
 		os.FileMode(0640),
 		false,
 	)
+	assertions.NoFileExists(flagFile)
 
 	newKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	rawKey, _ := x509.MarshalPKCS8PrivateKey(newKey)
@@ -283,18 +328,24 @@ func TestWorkerPrivateKey(t *testing.T) {
 		),
 		fs.FileMode(0755),
 	)
+	data, err = os.ReadFile(pemFile)
+	require.NoError(t, err)
+	oldHash = sha256.Sum256(data)
 
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pemFile,
-		flagFile,
 		os.FileMode(0640),
 		true,
 	)
+	assertions.FileExists(flagFile)
 }
 
 func TestWorkerCertificate(t *testing.T) {
+	assertions := assert.New(t)
 	requirements := require.New(t)
 
 	tempDir := t.TempDir()
@@ -316,29 +367,37 @@ func TestWorkerCertificate(t *testing.T) {
 		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
 		SavePath:     tempDir,
 		Filename:     "test.pem",
+		SplitMode:    false,
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindCertificate,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
+	ctx := context.Background()
 
+	err := job.Run(ctx)
+	requirements.NoError(err)
 	checkFileCreated(
 		t,
-		&job,
 		pemFile,
-		flagFile,
 		os.FileMode(0640),
 	)
+	data, err := os.ReadFile(pemFile)
+	require.NoError(t, err)
+	oldHash := sha256.Sum256(data)
+	assertions.FileExists(flagFile)
 	_ = os.Remove(flagFile)
 
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pemFile,
-		flagFile,
 		os.FileMode(0640),
 		false,
 	)
+	assertions.NoFileExists(flagFile)
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
@@ -351,17 +410,24 @@ func TestWorkerCertificate(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
+	data, err = os.ReadFile(pemFile)
+	require.NoError(t, err)
+	oldHash = sha256.Sum256(data)
+
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pemFile,
-		flagFile,
 		os.FileMode(0640),
 		true,
 	)
+	assertions.FileExists(flagFile)
 }
 
 func TestWorkerPrivateCertChain(t *testing.T) {
+	assertions := assert.New(t)
 	requirements := require.New(t)
 
 	tempDir := t.TempDir()
@@ -383,33 +449,40 @@ func TestWorkerPrivateCertChain(t *testing.T) {
 		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
 		SavePath:     tempDir,
 		Filename:     "test.pem",
-		Permissions:  new(os.FileMode(0640)),
+		SplitMode:    false,
+		Permissions:  new(os.FileMode(0644)),
 		Kind:         config.KindPrivateCertChain,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
+	ctx := context.Background()
 
+	err := job.Run(ctx)
+	requirements.NoError(err)
 	checkFileCreated(
 		t,
-		&job,
 		pemFile,
-		flagFile,
-		os.FileMode(0640),
+		os.FileMode(0644),
 	)
+	data, err := os.ReadFile(pemFile)
+	require.NoError(t, err)
+	oldHash := sha256.Sum256(data)
+	assertions.FileExists(flagFile)
 	_ = os.Remove(flagFile)
 
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pemFile,
-		flagFile,
-		os.FileMode(0640),
+		os.FileMode(0644),
 		false,
 	)
+	assertions.NoFileExists(flagFile)
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
-
 	fout, err := os.Create(pemFile)
 	requirements.NoError(err)
 
@@ -418,17 +491,114 @@ func TestWorkerPrivateCertChain(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
+	data, err = os.ReadFile(pemFile)
+	require.NoError(t, err)
+	oldHash = sha256.Sum256(data)
+
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pemFile,
-		flagFile,
+		os.FileMode(0644),
+		true,
+	)
+	assertions.FileExists(flagFile)
+	_ = os.Remove(flagFile)
+
+	job.SplitMode = true
+	job.Filename = "prefix"
+	job.Permissions = new(os.FileMode(0644))
+	certFile := filepath.Join(tempDir, "prefix_"+splitFullchainFilename)
+	keyFile := filepath.Join(tempDir, "prefix_"+splitKeyFilename)
+
+	err = job.Run(ctx)
+	requirements.NoError(err)
+	checkFileCreated(
+		t,
+		certFile,
+		os.FileMode(0644),
+	)
+	checkFileCreated(
+		t,
+		keyFile,
+		os.FileMode(0640),
+	)
+	assertions.FileExists(flagFile)
+	_ = os.Remove(flagFile)
+
+	data, err = os.ReadFile(keyFile)
+	require.NoError(t, err)
+	keyHash := sha256.Sum256(data)
+	data, err = os.ReadFile(certFile)
+	require.NoError(t, err)
+	certHash := sha256.Sum256(data)
+
+	err = job.Run(ctx)
+	requirements.NoError(err)
+	checkFileChanged(
+		t,
+		keyHash,
+		keyFile,
+		os.FileMode(0640),
+		false,
+	)
+	checkFileChanged(
+		t,
+		certHash,
+		certFile,
+		os.FileMode(0644),
+		false,
+	)
+	assertions.NoFileExists(flagFile)
+
+	fin1, err := os.Open("../../test/pem/testCACert.pem")
+	requirements.NoError(err)
+	fin2, err := os.Open("../../test/pem/testPKCS1RSAPrivateKey.pem")
+	requirements.NoError(err)
+	fout1, err := os.Create(certFile)
+	requirements.NoError(err)
+	fout2, err := os.Create(keyFile)
+	requirements.NoError(err)
+
+	_, err = io.Copy(fout1, fin1)
+	requirements.NoError(err)
+	_, err = io.Copy(fout2, fin2)
+	requirements.NoError(err)
+	_ = fin1.Close()
+	_ = fin2.Close()
+	_ = fout1.Close()
+	_ = fout2.Close()
+
+	data, err = os.ReadFile(keyFile)
+	require.NoError(t, err)
+	keyHash = sha256.Sum256(data)
+	data, err = os.ReadFile(certFile)
+	require.NoError(t, err)
+	certHash = sha256.Sum256(data)
+
+	err = job.Run(ctx)
+	requirements.NoError(err)
+	checkFileChanged(
+		t,
+		keyHash,
+		keyFile,
 		os.FileMode(0640),
 		true,
 	)
+	checkFileChanged(
+		t,
+		certHash,
+		certFile,
+		os.FileMode(0644),
+		true,
+	)
+	assertions.FileExists(flagFile)
 }
 
 func TestWorkerPFX(t *testing.T) {
+	assertions := assert.New(t)
 	requirements := require.New(t)
 
 	tempDir := t.TempDir()
@@ -450,28 +620,37 @@ func TestWorkerPFX(t *testing.T) {
 		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
 		SavePath:     tempDir,
 		Filename:     "testpfx.p12",
+		SplitMode:    false,
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindPFX,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
+
+	ctx := context.Background()
+	err := job.Run(ctx)
+	requirements.NoError(err)
 	checkFileCreated(
 		t,
-		&job,
 		pfxFile,
-		flagFile,
 		os.FileMode(0640),
 	)
+	data, err := os.ReadFile(pfxFile)
+	require.NoError(t, err)
+	oldHash := sha256.Sum256(data)
+	assertions.FileExists(flagFile)
 	_ = os.Remove(flagFile)
 
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pfxFile,
-		flagFile,
 		os.FileMode(0640),
 		false,
 	)
+	assertions.NoFileExists(flagFile)
 
 	fin, err := os.Open("../../test/pem/testAnotherPFX.p12")
 	requirements.NoError(err)
@@ -482,17 +661,24 @@ func TestWorkerPFX(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
+	data, err = os.ReadFile(pfxFile)
+	require.NoError(t, err)
+	oldHash = sha256.Sum256(data)
+
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pfxFile,
-		flagFile,
 		os.FileMode(0640),
 		true,
 	)
+	assertions.FileExists(flagFile)
 }
 
 func TestWorkerPrivateCert(t *testing.T) {
+	assertions := assert.New(t)
 	requirements := require.New(t)
 
 	tempDir := t.TempDir()
@@ -514,28 +700,37 @@ func TestWorkerPrivateCert(t *testing.T) {
 		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
 		SavePath:     tempDir,
 		Filename:     "test.pem",
-		Permissions:  new(os.FileMode(0640)),
+		SplitMode:    false,
+		Permissions:  new(os.FileMode(0644)),
 		Kind:         config.KindPrivateCert,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
+
+	ctx := context.Background()
+	err := job.Run(ctx)
+	requirements.NoError(err)
 	checkFileCreated(
 		t,
-		&job,
 		pemFile,
-		flagFile,
-		os.FileMode(0640),
+		os.FileMode(0644),
 	)
+	data, err := os.ReadFile(pemFile)
+	require.NoError(t, err)
+	oldHash := sha256.Sum256(data)
+	assertions.FileExists(flagFile)
 	_ = os.Remove(flagFile)
 
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pemFile,
-		flagFile,
-		os.FileMode(0640),
+		os.FileMode(0644),
 		false,
 	)
+	assertions.NoFileExists(flagFile)
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
@@ -548,17 +743,114 @@ func TestWorkerPrivateCert(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
+	data, err = os.ReadFile(pemFile)
+	require.NoError(t, err)
+	oldHash = sha256.Sum256(data)
+
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pemFile,
-		flagFile,
+		os.FileMode(0644),
+		true,
+	)
+	assertions.FileExists(flagFile)
+	_ = os.Remove(flagFile)
+
+	job.SplitMode = true
+	job.Filename = "prefix"
+	job.Permissions = new(os.FileMode(0644))
+	certFile := filepath.Join(tempDir, "prefix_"+splitCertFilename)
+	keyFile := filepath.Join(tempDir, "prefix_"+splitKeyFilename)
+
+	err = job.Run(ctx)
+	requirements.NoError(err)
+	checkFileCreated(
+		t,
+		certFile,
+		os.FileMode(0644),
+	)
+	checkFileCreated(
+		t,
+		keyFile,
+		os.FileMode(0640),
+	)
+	assertions.FileExists(flagFile)
+	_ = os.Remove(flagFile)
+
+	data, err = os.ReadFile(keyFile)
+	require.NoError(t, err)
+	keyHash := sha256.Sum256(data)
+	data, err = os.ReadFile(certFile)
+	require.NoError(t, err)
+	certHash := sha256.Sum256(data)
+
+	err = job.Run(ctx)
+	requirements.NoError(err)
+	checkFileChanged(
+		t,
+		keyHash,
+		keyFile,
+		os.FileMode(0640),
+		false,
+	)
+	checkFileChanged(
+		t,
+		certHash,
+		certFile,
+		os.FileMode(0644),
+		false,
+	)
+	assertions.NoFileExists(flagFile)
+
+	fin1, err := os.Open("../../test/pem/testCACert.pem")
+	requirements.NoError(err)
+	fin2, err := os.Open("../../test/pem/testPKCS1RSAPrivateKey.pem")
+	requirements.NoError(err)
+	fout1, err := os.Create(certFile)
+	requirements.NoError(err)
+	fout2, err := os.Create(keyFile)
+	requirements.NoError(err)
+
+	_, err = io.Copy(fout1, fin1)
+	requirements.NoError(err)
+	_, err = io.Copy(fout2, fin2)
+	requirements.NoError(err)
+	_ = fin1.Close()
+	_ = fin2.Close()
+	_ = fout1.Close()
+	_ = fout2.Close()
+
+	data, err = os.ReadFile(keyFile)
+	require.NoError(t, err)
+	keyHash = sha256.Sum256(data)
+	data, err = os.ReadFile(certFile)
+	require.NoError(t, err)
+	certHash = sha256.Sum256(data)
+
+	err = job.Run(ctx)
+	requirements.NoError(err)
+	checkFileChanged(
+		t,
+		keyHash,
+		keyFile,
 		os.FileMode(0640),
 		true,
 	)
+	checkFileChanged(
+		t,
+		certHash,
+		certFile,
+		os.FileMode(0644),
+		true,
+	)
+	assertions.FileExists(flagFile)
 }
 
 func TestWorkerRootChain(t *testing.T) {
+	assertions := assert.New(t)
 	requirements := require.New(t)
 
 	tempDir := t.TempDir()
@@ -580,28 +872,37 @@ func TestWorkerRootChain(t *testing.T) {
 		OnRefreshCmd: fmt.Sprintf("touch %s", flagFile),
 		SavePath:     tempDir,
 		Filename:     "test.pem",
+		SplitMode:    false,
 		Permissions:  new(os.FileMode(0640)),
 		Kind:         config.KindCertRootChain,
 		RunInterval:  3600,
 		JobTimeout:   5,
 	}
+
+	ctx := context.Background()
+	err := job.Run(ctx)
+	requirements.NoError(err)
 	checkFileCreated(
 		t,
-		&job,
 		pemFile,
-		flagFile,
 		os.FileMode(0640),
 	)
+	data, err := os.ReadFile(pemFile)
+	require.NoError(t, err)
+	oldHash := sha256.Sum256(data)
+	assertions.FileExists(flagFile)
 	_ = os.Remove(flagFile)
 
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pemFile,
-		flagFile,
 		os.FileMode(0640),
 		false,
 	)
+	assertions.NoFileExists(flagFile)
 
 	fin, err := os.Open("../../test/pem/testAnotherChain.pem")
 	requirements.NoError(err)
@@ -614,12 +915,17 @@ func TestWorkerRootChain(t *testing.T) {
 	_ = fin.Close()
 	_ = fout.Close()
 
+	data, err = os.ReadFile(pemFile)
+	oldHash = sha256.Sum256(data)
+
+	err = job.Run(ctx)
+	requirements.NoError(err)
 	checkFileChanged(
 		t,
-		&job,
+		oldHash,
 		pemFile,
-		flagFile,
 		os.FileMode(0640),
 		true,
 	)
+	assertions.FileExists(flagFile)
 }

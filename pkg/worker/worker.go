@@ -1,11 +1,12 @@
 package worker
 
 import (
+	"bytes"
 	"certwarden-client/pkg/api"
 	"certwarden-client/pkg/config"
-	"certwarden-client/pkg/crypto"
 	"certwarden-client/pkg/logger"
 	"context"
+	"crypto/sha256"
 	"crypto/x509"
 	"errors"
 	"net/http"
@@ -30,13 +31,14 @@ type CertJob struct {
 	OnRefreshCmd string
 	SavePath     string
 	Filename     string
+	SplitMode    bool
 	Permissions  *os.FileMode
 	Kind         config.CertKind
 	RunInterval  time.Duration
 	JobTimeout   time.Duration
 }
 
-type CompareStruct struct {
+type KeyPair struct {
 	Key          any
 	Certificates []*x509.Certificate
 }
@@ -60,33 +62,41 @@ func compareKeys(oldKey, newKey any) (bool, error) {
 		return false, err
 	}
 
-	return crypto.ComparePrivateKeys(oldKeyBytes, newKeyBytes), nil
+	return bytes.Equal(oldKeyBytes, newKeyBytes), nil
 }
 
 func compareCertificates(oldCerts, newCerts []*x509.Certificate) bool {
 	if oldCerts == nil && newCerts == nil {
 		return true
 	}
-
 	if oldCerts == nil || newCerts == nil {
 		return false
 	}
 
-	oldMap := make(crypto.CertChainMap, len(oldCerts))
-	newMap := make(crypto.CertChainMap, len(newCerts))
-
-	for _, cert := range oldCerts {
-		oldMap[cert.Subject.String()] = cert
+	if len(oldCerts) != len(newCerts) {
+		return false
 	}
 
-	for _, cert := range newCerts {
-		newMap[cert.Subject.String()] = cert
+	// map[certificate_hash]->times_encountered
+	counts := make(map[[32]byte]int, len(oldCerts))
+	// Scan old certificates slice
+	for _, c := range oldCerts {
+		counts[sha256.Sum256(c.Raw)]++
 	}
 
-	return crypto.CompareCertChainMaps(&oldMap, &newMap)
+	for _, c := range newCerts {
+		fp := sha256.Sum256(c.Raw)
+		if counts[fp] == 0 {
+			// item wasn't seen in the old set, or is a duplicate in the new set
+			return false
+		}
+		// mark fingerprint from the old set as encountered in the new set
+		counts[fp]--
+	}
+	return true
 }
 
-func compare(oldCS, newCS *CompareStruct) (bool, error) {
+func compare(oldCS, newCS *KeyPair) (bool, error) {
 	if oldCS == newCS {
 		return true, nil
 	}
@@ -129,6 +139,8 @@ func (j *CertJob) Run(ctx context.Context) error {
 				serverCertChain,
 				serverKeys,
 				j.Permissions,
+				j.SplitMode,
+				j.Kind,
 			)
 			if err != nil {
 				return err
@@ -136,11 +148,11 @@ func (j *CertJob) Run(ctx context.Context) error {
 			filesChanged = true
 		} else {
 			dataMatches, err := compare(
-				&CompareStruct{
+				&KeyPair{
 					existingKey,
 					existingCertChain,
 				},
-				&CompareStruct{
+				&KeyPair{
 					serverKey,
 					serverCertChain,
 				},
@@ -155,6 +167,8 @@ func (j *CertJob) Run(ctx context.Context) error {
 					serverCertChain,
 					serverKeys,
 					j.Permissions,
+					j.SplitMode,
+					j.Kind,
 				)
 				if err != nil {
 					return err
@@ -177,7 +191,7 @@ func (j *CertJob) Run(ctx context.Context) error {
 		}
 
 		logger.Log.WithFields(logFields).Info("Checking for existing private key file")
-		_, existingKeys, err = loadCertKeyChainFromFile(filePath)
+		_, existingKeys, err = loadCertKeyChainFromFile(filePath, j.SplitMode, j.Kind)
 		if err != nil {
 			return err
 		}
@@ -198,7 +212,7 @@ func (j *CertJob) Run(ctx context.Context) error {
 		}
 
 		logger.Log.WithFields(logFields).Info("Checking for existing certificate file")
-		existingCertChain, _, err = loadCertKeyChainFromFile(filePath)
+		existingCertChain, _, err = loadCertKeyChainFromFile(filePath, j.SplitMode, j.Kind)
 		if err != nil {
 			return err
 		}
@@ -221,8 +235,8 @@ func (j *CertJob) Run(ctx context.Context) error {
 			return errors.New("invalid response from server: no private keys found")
 		}
 
-		logger.Log.WithFields(logFields).Info("Checking for existing certificate chain+key pair file")
-		existingCertChain, existingKeys, err = loadCertKeyChainFromFile(filePath)
+		logger.Log.WithFields(logFields).Info("Checking for existing certificate chain and private key file(s)")
+		existingCertChain, existingKeys, err = loadCertKeyChainFromFile(filePath, j.SplitMode, j.Kind)
 		if err != nil {
 			return err
 		}
@@ -261,11 +275,11 @@ func (j *CertJob) Run(ctx context.Context) error {
 				return err
 			}
 			dataMatches, err := compare(
-				&CompareStruct{
+				&KeyPair{
 					existingPrivateKey,
 					append([]*x509.Certificate{existingCertificate}, existingCACerts...),
 				},
-				&CompareStruct{
+				&KeyPair{
 					serverPrivateKey,
 					append([]*x509.Certificate{serverCertificate}, serverCACerts...),
 				},
@@ -292,12 +306,17 @@ func (j *CertJob) Run(ctx context.Context) error {
 		if len(serverCertChain) == 0 {
 			return errors.New("invalid response from server: no certificates found")
 		}
+
+		if len(serverCertChain) > 1 {
+			return errors.New("invalid response from server: multiple certificates found")
+		}
+
 		if len(serverKeys) == 0 {
 			return errors.New("invalid response from server: no private keys found")
 		}
 
-		logger.Log.WithFields(logFields).Info("Checking for existing certificate+key pair file")
-		existingCertChain, existingKeys, err = loadCertKeyChainFromFile(filePath)
+		logger.Log.WithFields(logFields).Info("Checking for existing certificate and private key file(s)")
+		existingCertChain, existingKeys, err = loadCertKeyChainFromFile(filePath, j.SplitMode, j.Kind)
 		if err != nil {
 			return err
 		}
@@ -318,7 +337,7 @@ func (j *CertJob) Run(ctx context.Context) error {
 		}
 
 		logger.Log.WithFields(logFields).Info("Checking for existing certificate root chain file")
-		existingCertChain, _, err = loadCertKeyChainFromFile(filePath)
+		existingCertChain, _, err = loadCertKeyChainFromFile(filePath, j.SplitMode, j.Kind)
 		if err != nil {
 			return err
 		}

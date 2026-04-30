@@ -2,6 +2,7 @@ package worker
 
 import (
 	"certwarden-client/pkg/api"
+	"certwarden-client/pkg/config"
 	"certwarden-client/pkg/crypto"
 	"certwarden-client/pkg/logger"
 	"crypto/x509"
@@ -10,6 +11,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+)
+
+const (
+	splitKeyFilename       = "privkey.pem"
+	splitCertFilename      = "cert.pem"
+	splitFullchainFilename = "fullchain.pem"
 )
 
 func fetchPrivateKeys(cw *api.CertWarden, name string, auth string) ([]any, error) {
@@ -111,15 +119,33 @@ func saveToFile(path string, data []byte, perms *os.FileMode) error {
 	return nil
 }
 
-func saveCertKeyChainToFile(path string, certs []*x509.Certificate, keys []any, perms *os.FileMode) error {
-	var pemBlocks []*pem.Block
+func saveCertKeyChainToFile(path string, certs []*x509.Certificate, keys []any, perms *os.FileMode, splitMode bool, jobKind config.CertKind) error {
+	savePEMFunc := func(blocks []*pem.Block, path string, perms *os.FileMode) error {
+		if len(blocks) > 0 {
+			data := make([]byte, 0)
+			for _, block := range blocks {
+				pemBinary := pem.EncodeToMemory(block)
+				if pemBinary == nil {
+					return errors.New("failed to encode PEM block")
+				}
+				data = append(data, pemBinary...)
+			}
+			err := saveToFile(path, data, perms)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	var keyPEMBlocks, certPEMBlocks []*pem.Block
 	if keys != nil {
 		for _, key := range keys {
 			keyPEM, err := crypto.EncodePrivateKeyPEM(key)
 			if err != nil {
 				return err
 			}
-			pemBlocks = append(pemBlocks, keyPEM)
+			keyPEMBlocks = append(keyPEMBlocks, keyPEM)
 		}
 	}
 	if certs != nil {
@@ -129,32 +155,86 @@ func saveCertKeyChainToFile(path string, certs []*x509.Certificate, keys []any, 
 				Bytes:   cert.Raw,
 				Headers: map[string]string{},
 			}
-			pemBlocks = append(pemBlocks, certPEM)
+			certPEMBlocks = append(certPEMBlocks, certPEM)
 		}
 	}
 
-	if len(pemBlocks) > 0 {
-		data := make([]byte, 0)
-		for _, block := range pemBlocks {
-			pemBinary := pem.EncodeToMemory(block)
-			if pemBinary == nil {
-				return errors.New("failed to encode PEM block")
-			}
-			data = append(data, pemBinary...)
+	if splitMode {
+		baseDir, filePrefix := filepath.Split(path)
+		var certFilename string
+		keyFilename := splitKeyFilename
+		switch jobKind {
+		case config.KindPrivateCertChain:
+			certFilename = splitFullchainFilename
+		case config.KindPrivateCert:
+			certFilename = splitCertFilename
+		default:
+			return fmt.Errorf("split mode unsupported for job kind %T", jobKind)
 		}
-		err := saveToFile(path, data, perms)
+
+		if filePrefix != "" {
+			keyFilename = filePrefix + "_" + keyFilename
+			certFilename = filePrefix + "_" + certFilename
+		}
+
+		// Enforce safer permissions for private key
+		keyPerms := new(*perms & 0740)
+		err := savePEMFunc(keyPEMBlocks, filepath.Join(baseDir, keyFilename), keyPerms)
 		if err != nil {
 			return err
 		}
+		err = savePEMFunc(certPEMBlocks, filepath.Join(baseDir, certFilename), perms)
+		if err != nil {
+			return err
+		}
+		return nil
 	}
-	return nil
+
+	pemBlocks := append(keyPEMBlocks, certPEMBlocks...)
+	return savePEMFunc(pemBlocks, path, perms)
 }
 
-func loadCertKeyChainFromFile(path string) ([]*x509.Certificate, []any, error) {
-	pemData, err := loadFromFile(path)
-	if err != nil {
-		return nil, nil, err
+func loadCertKeyChainFromFile(path string, splitMode bool, jobKind config.CertKind) ([]*x509.Certificate, []any, error) {
+	var pemData []byte
+	var err error
+	if splitMode {
+		baseDir, filePrefix := filepath.Split(path)
+		var certFilename string
+		keyFilename := splitKeyFilename
+		switch jobKind {
+		case config.KindPrivateCertChain:
+			certFilename = splitFullchainFilename
+		case config.KindPrivateCert:
+			certFilename = splitCertFilename
+		default:
+			return nil, nil, fmt.Errorf("split mode unsupported for job kind %T", jobKind)
+		}
+
+		if filePrefix != "" {
+			keyFilename = filePrefix + "_" + keyFilename
+			certFilename = filePrefix + "_" + certFilename
+		}
+		pemData, err = loadFromFile(filepath.Join(baseDir, keyFilename))
+		if err != nil {
+			return nil, nil, err
+		}
+		var certsData []byte
+		certsData, err = loadFromFile(filepath.Join(baseDir, certFilename))
+		if err != nil {
+			return nil, nil, err
+		}
+		// add newline separator just to be sure
+		if len(pemData) > 0 {
+			pemData = append(pemData, 0x0a)
+		}
+		pemData = append(pemData, certsData...)
+	} else {
+		pemData, err = loadFromFile(path)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
+
 	if len(pemData) == 0 {
 		return nil, nil, nil
 	}

@@ -2,9 +2,7 @@ package crypto
 
 import (
 	"certwarden-client/pkg/logger"
-	"crypto/sha1"
 	"crypto/x509"
-	"encoding/hex"
 	"errors"
 )
 
@@ -26,18 +24,4 @@ func ParsePrivateKeyDER(rawKey []byte) (any, error) {
 		}
 	}
 	return key, nil
-}
-
-func ComparePrivateKeys(old []byte, new []byte) bool {
-	if old == nil {
-		if new == nil {
-			return true
-		}
-		return false
-	}
-
-	oldSha1 := sha1.Sum(old)
-	newSha1 := sha1.Sum(new)
-	logger.Log.Debugf("Old key SHA1: %s, new key SHA1: %s", hex.EncodeToString(oldSha1[:]), hex.EncodeToString(newSha1[:]))
-	return oldSha1 == newSha1
 }

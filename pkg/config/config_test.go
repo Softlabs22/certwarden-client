@@ -169,15 +169,17 @@ func TestCertificateSetDefaults(t *testing.T) {
 	assertions := assert.New(t)
 
 	var expected = Certificate{
-		Name:          "0",
-		CertAPIToken:  "",
-		KeyAPIToken:   "",
-		Kind:          new(DefaultKind),
-		StorePath:     "",
-		Filename:      "0_keycertchain.pem",
-		Permissions:   new(OSFileMode(DefaultPermissions)),
-		RefreshPeriod: nil,
-		OnRefreshCmd:  "",
+		Name:            "0",
+		CertAPIToken:    "",
+		KeyAPIToken:     "",
+		Kind:            new(DefaultKind),
+		StorePath:       "",
+		Filename:        "0" + "_" + certKindDefaultBaseFilename[DefaultKind],
+		FilenamePrefix:  "",
+		SplitKeyAndCert: false,
+		Permissions:     new(OSFileMode(DefaultPermissions)),
+		RefreshPeriod:   nil,
+		OnRefreshCmd:    "",
 	}
 
 	actual := Certificate{}
@@ -201,15 +203,17 @@ func TestConfigApplyDefaults(t *testing.T) {
 		},
 		Certificates: []*Certificate{
 			{
-				Name:          "0",
-				CertAPIToken:  "",
-				KeyAPIToken:   "",
-				Kind:          new(DefaultKind),
-				StorePath:     "",
-				Filename:      "0_keycertchain.pem",
-				Permissions:   new(OSFileMode(DefaultPermissions)),
-				RefreshPeriod: nil,
-				OnRefreshCmd:  "",
+				Name:            "0",
+				CertAPIToken:    "",
+				KeyAPIToken:     "",
+				Kind:            new(DefaultKind),
+				StorePath:       "",
+				Filename:        "0" + "_" + certKindDefaultBaseFilename[DefaultKind],
+				FilenamePrefix:  "",
+				SplitKeyAndCert: false,
+				Permissions:     new(OSFileMode(DefaultPermissions)),
+				RefreshPeriod:   nil,
+				OnRefreshCmd:    "",
 			},
 		},
 	}
@@ -259,7 +263,7 @@ func TestConfigLoadFullConfig(t *testing.T) {
 	requirements.NoErrorf(err, "failed to load config: %s", err)
 
 	assertions.NotNil(conf.Global)
-	assertions.Len(conf.Certificates, len(certKindName))
+	assertions.Len(conf.Certificates, 7)
 	assertions.Equal("https://example.com", conf.Global.CertWardenURL)
 	assertions.Equal((*TimeDuration)(new(int64(694861000000000))), conf.Global.RefreshPeriod)
 	assertions.Equal((*TimeDuration)(new(int64(5000000000))), conf.Global.JobTimeout)
@@ -272,9 +276,18 @@ func TestConfigLoadFullConfig(t *testing.T) {
 		assertions.Equal(fmt.Sprintf("test%d", testno+1), cert.Name)
 		assertions.Equal("CertToken", cert.CertAPIToken)
 		assertions.Equal("KeyToken", cert.KeyAPIToken)
-		assertions.Equal((*CertKind)(new(testno)), cert.Kind)
 		assertions.Equal("/opt/certs", cert.StorePath)
-		assertions.Equal(fmt.Sprintf(certKindDefaultFilename[*cert.Kind], cert.Name), cert.Filename)
+
+		if testno < 6 {
+			assertions.Equal(CertKind(testno), *cert.Kind)
+			assertions.Equal(cert.Name+"_"+certKindDefaultBaseFilename[*cert.Kind], cert.Filename)
+			assertions.Equal(false, cert.SplitKeyAndCert)
+		} else {
+			assertions.Equal(KindPrivateCertChain, *cert.Kind)
+			assertions.Equal(true, cert.SplitKeyAndCert)
+			assertions.Equal(cert.FilenamePrefix, cert.Filename)
+		}
+
 		assertions.Equal(expectedPermissions, cert.Permissions)
 		assertions.Equal((*TimeDuration)(new(int64(10000000000))), cert.RefreshPeriod)
 		assertions.Equal("command", cert.OnRefreshCmd)

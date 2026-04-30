@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"certwarden-client/pkg/config"
 	"os"
 	"path/filepath"
 	"testing"
@@ -62,7 +63,7 @@ func TestSaveToFile(t *testing.T) {
 
 func TestLoadCertKeyFromFileBadPath(t *testing.T) {
 	assertions := assert.New(t)
-	certs, keys, err := loadCertKeyChainFromFile("/nonexistent")
+	certs, keys, err := loadCertKeyChainFromFile("/nonexistent", false, 0)
 
 	assertions.NoError(err)
 	assertions.Nil(certs)
@@ -72,12 +73,12 @@ func TestLoadCertKeyFromFileBadPath(t *testing.T) {
 func TestLoadCertKeyFromFileMalformedData(t *testing.T) {
 	assertions := assert.New(t)
 
-	certs, keys, err := loadCertKeyChainFromFile("../../test/configs/allOptionsConfig.yaml")
+	certs, keys, err := loadCertKeyChainFromFile("../../test/configs/allOptionsConfig.yaml", false, 0)
 	assertions.Error(err)
 	assertions.Nil(certs)
 	assertions.Nil(keys)
 
-	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/testMalformedKeyPair.pem")
+	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/testMalformedKeyPair.pem", false, 0)
 	assertions.Error(err)
 	assertions.Nil(certs)
 	assertions.Nil(keys)
@@ -87,27 +88,37 @@ func TestLoadCertKeyChainFromFile(t *testing.T) {
 	assertions := assert.New(t)
 	requirements := require.New(t)
 
-	certs, keys, err := loadCertKeyChainFromFile("../../test/pem/testCertificate.pem")
+	certs, keys, err := loadCertKeyChainFromFile("../../test/pem/testCertificate.pem", false, 0)
 	requirements.NoError(err)
 	assertions.NotNil(certs)
 	assertions.Nil(keys)
 
-	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/testPKCS1RSAPrivateKey.pem")
+	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/testPKCS1RSAPrivateKey.pem", false, 0)
 	requirements.NoError(err)
 	assertions.Nil(certs)
 	assertions.NotNil(keys)
 
-	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/testPKCS8RSAPrivateKey.pem")
+	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/testPKCS8RSAPrivateKey.pem", false, 0)
 	requirements.NoError(err)
 	assertions.Nil(certs)
 	assertions.NotNil(keys)
 
-	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/testECPrivateKey.pem")
+	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/testECPrivateKey.pem", false, 0)
 	requirements.NoError(err)
 	assertions.Nil(certs)
 	assertions.NotNil(keys)
 
-	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/testKeyPair.pem")
+	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/testKeyPair.pem", false, 0)
+	requirements.NoError(err)
+	assertions.NotNil(certs)
+	assertions.NotNil(keys)
+
+	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/split/test", true, config.KindPrivateCertChain)
+	requirements.NoError(err)
+	assertions.NotNil(certs)
+	assertions.NotNil(keys)
+
+	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/split/test", true, config.KindPrivateCert)
 	requirements.NoError(err)
 	assertions.NotNil(certs)
 	assertions.NotNil(keys)
@@ -117,12 +128,12 @@ func TestSaveCertKeyChainToFileBadPath(t *testing.T) {
 	assertions := assert.New(t)
 	requirements := require.New(t)
 
-	certs, keys, err := loadCertKeyChainFromFile("../../test/pem/testKeyPair.pem")
+	certs, keys, err := loadCertKeyChainFromFile("../../test/pem/testKeyPair.pem", false, 0)
 	requirements.NoError(err)
 	assertions.NotNil(certs)
 	assertions.NotNil(keys)
 
-	err = saveCertKeyChainToFile("/non/existent", certs, keys, new(os.FileMode(0640)))
+	err = saveCertKeyChainToFile("/non/existent", certs, keys, new(os.FileMode(0640)), false, 0)
 	assertions.Error(err)
 }
 
@@ -130,7 +141,7 @@ func TestSaveCertKeyChainToFileMalformedData(t *testing.T) {
 	assertions := assert.New(t)
 	requirements := require.New(t)
 
-	certs, keys, err := loadCertKeyChainFromFile("../../test/pem/testKeyPair.pem")
+	certs, keys, err := loadCertKeyChainFromFile("../../test/pem/testKeyPair.pem", false, 0)
 	requirements.NoError(err)
 	assertions.NotNil(certs)
 	requirements.NotNil(keys)
@@ -141,7 +152,7 @@ func TestSaveCertKeyChainToFileMalformedData(t *testing.T) {
 	tempDir := t.TempDir()
 	tempFile := filepath.Join(tempDir, "test.pem")
 
-	err = saveCertKeyChainToFile(tempFile, certs, keys, new(os.FileMode(0640)))
+	err = saveCertKeyChainToFile(tempFile, certs, keys, new(os.FileMode(0640)), false, 0)
 	assertions.Error(err)
 	assertions.NoFileExists(tempFile)
 }
@@ -150,7 +161,7 @@ func TestSaveCertKeyChainToFile(t *testing.T) {
 	assertions := assert.New(t)
 	requirements := require.New(t)
 
-	certs, keys, err := loadCertKeyChainFromFile("../../test/pem/testKeyPair.pem")
+	certs, keys, err := loadCertKeyChainFromFile("../../test/pem/testKeyPair.pem", false, 0)
 	requirements.NoError(err)
 	assertions.NotNil(certs)
 	assertions.NotNil(keys)
@@ -158,15 +169,39 @@ func TestSaveCertKeyChainToFile(t *testing.T) {
 	tempDir := t.TempDir()
 	tempFile := filepath.Join(tempDir, "test.pem")
 
-	err = saveCertKeyChainToFile(tempFile, certs, keys, new(os.FileMode(0640)))
+	err = saveCertKeyChainToFile(tempFile, certs, keys, new(os.FileMode(0644)), false, 0)
 	requirements.NoError(err)
 	requirements.FileExists(tempFile)
 	stat, err := os.Stat(tempFile)
 	requirements.NoError(err)
-	assertions.Equal(os.FileMode(0640), stat.Mode())
+	assertions.Equal(os.FileMode(0644), stat.Mode())
 
 	origContents, _ := os.ReadFile("../../test/pem/testKeyPair.pem")
 	newContents, _ := os.ReadFile(tempFile)
 
 	assertions.Equal(origContents, newContents)
+
+	filePrefix := "testjob"
+	certFile := filepath.Join(tempDir, filePrefix+"_"+splitCertFilename)
+	keyFile := filepath.Join(tempDir, filePrefix+"_"+splitKeyFilename)
+	err = saveCertKeyChainToFile(filepath.Join(tempDir, filePrefix), certs, keys, new(os.FileMode(0644)), true, config.KindPrivateCert)
+	requirements.NoError(err)
+	requirements.FileExists(certFile)
+	requirements.FileExists(keyFile)
+	keyStat, err := os.Stat(keyFile)
+	requirements.NoError(err)
+	certStat, err := os.Stat(certFile)
+	requirements.NoError(err)
+	assertions.Equal(os.FileMode(0644), certStat.Mode())
+	assertions.Equal(os.FileMode(0640), keyStat.Mode())
+
+	certs, keys, err = loadCertKeyChainFromFile("../../test/pem/testFullChain.pem", false, 0)
+	requirements.NoError(err)
+	assertions.NotNil(certs)
+	assertions.NotNil(keys)
+	certFile = filepath.Join(tempDir, filePrefix+"_"+splitFullchainFilename)
+	err = saveCertKeyChainToFile(filepath.Join(tempDir, filePrefix), certs, keys, new(os.FileMode(0644)), true, config.KindPrivateCertChain)
+	requirements.NoError(err)
+	requirements.FileExists(certFile)
+	requirements.FileExists(keyFile)
 }

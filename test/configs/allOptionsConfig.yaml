@@ -13,7 +13,9 @@ certificates:
     kind: privatekey
     permissions: 0123
     storePath: /opt/certs
-    filename: test1_key.pem
+    filename: test1_privkey.pem
+    filenamePrefix: "testsomethingelse" # Will be ignored when filename is defined
+    splitKeyAndCert: false # When set to true, default filenames with prefix(if defined) will be used
     onRefreshCmd: &refreshcmd "command"
   - name: test2
     certAPIToken: *certtoken
@@ -22,7 +24,7 @@ certificates:
     kind: certificate
     permissions: 0123
     storePath: /opt/certs
-    filename: test2_certchain.pem
+    filename: test2_fullchain.pem
     onRefreshCmd: *refreshcmd
   - name: test3
     certAPIToken: *certtoken
@@ -31,7 +33,7 @@ certificates:
     kind: privatecertchain
     permissions: 0123
     storePath: /opt/certs
-    filename: test3_keycertchain.pem
+    filenamePrefix: "test3"
     onRefreshCmd: *refreshcmd
   - name: test4
     certAPIToken: *certtoken
@@ -40,7 +42,7 @@ certificates:
     kind: pfx
     permissions: 0123
     storePath: /opt/certs
-    filename: test4.p12
+    filenamePrefix: "test4"
     onRefreshCmd: *refreshcmd
   - name: test5
     certAPIToken: *certtoken
@@ -49,7 +51,7 @@ certificates:
     kind: privatecert
     permissions: 0123
     storePath: /opt/certs
-    filename: test5_keycert.pem
+    filenamePrefix: "test5"
     onRefreshCmd: *refreshcmd
   - name: test6
     certAPIToken: *certtoken
@@ -58,5 +60,16 @@ certificates:
     kind: certrootchain
     permissions: 0123
     storePath: /opt/certs
-    filename: test6_rootchain.pem
+    filenamePrefix: "test6"
+    onRefreshCmd: *refreshcmd
+  - name: test7
+    certAPIToken: *certtoken
+    keyAPIToken: *keytoken
+    refreshPeriod: *refreshperiod
+    kind: privatecertchain
+    permissions: 0123
+    storePath: /opt/certs
+    filename: "lorem ipsum"
+    filenamePrefix: "test7"
+    splitKeyAndCert: true
     onRefreshCmd: *refreshcmd

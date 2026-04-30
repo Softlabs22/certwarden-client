@@ -45,13 +45,13 @@ var certKindName = map[string]CertKind{
 	"certrootchain":    KindCertRootChain,
 }
 
-var certKindDefaultFilename = map[CertKind]string{
-	KindPrivateKey:       "%s_key.pem",
-	KindCertificate:      "%s_certchain.pem",
-	KindPrivateCertChain: "%s_keycertchain.pem",
-	KindPFX:              "%s.p12",
-	KindPrivateCert:      "%s_keycert.pem",
-	KindCertRootChain:    "%s_rootchain.pem",
+var certKindDefaultBaseFilename = map[CertKind]string{
+	KindPrivateKey:       "privkey.pem",
+	KindCertificate:      "fullchain.pem",
+	KindPrivateCertChain: "keyfullchain.pem",
+	KindPFX:              "bundle.p12",
+	KindPrivateCert:      "keycert.pem",
+	KindCertRootChain:    "rootchain.pem",
 }
 
 type Global struct {
@@ -64,15 +64,17 @@ type Global struct {
 }
 
 type Certificate struct {
-	Name          string        `yaml:"name"`
-	CertAPIToken  string        `yaml:"certAPIToken"`
-	KeyAPIToken   string        `yaml:"keyAPIToken"`
-	Kind          *CertKind     `yaml:"kind"`
-	StorePath     string        `yaml:"storePath"`
-	Filename      string        `yaml:"filename"`
-	Permissions   *OSFileMode   `yaml:"permissions"`
-	RefreshPeriod *TimeDuration `yaml:"refreshPeriod"`
-	OnRefreshCmd  string        `yaml:"onRefreshCmd"`
+	Name            string        `yaml:"name"`
+	CertAPIToken    string        `yaml:"certAPIToken"`
+	KeyAPIToken     string        `yaml:"keyAPIToken"`
+	Kind            *CertKind     `yaml:"kind"`
+	StorePath       string        `yaml:"storePath"`
+	Filename        string        `yaml:"filename"`
+	FilenamePrefix  string        `yaml:"filenamePrefix"`
+	SplitKeyAndCert bool          `yaml:"splitKeyAndCert"`
+	Permissions     *OSFileMode   `yaml:"permissions"`
+	RefreshPeriod   *TimeDuration `yaml:"refreshPeriod"`
+	OnRefreshCmd    string        `yaml:"onRefreshCmd"`
 }
 type Config struct {
 	Global       *Global        `yaml:"global"`
@@ -168,8 +170,16 @@ func (c *Certificate) SetDefaults(index int) {
 		c.Permissions = new(OSFileMode(os.FileMode(DefaultPermissions)))
 	}
 
-	if c.Filename == "" {
-		c.Filename = fmt.Sprintf(certKindDefaultFilename[*c.Kind], c.Name)
+	// Filename takes precedence over FilenamePrefix when specified, unless split mode is used - in this case,
+	// FilenamePrefix will be used to generate the final filename when saving, if it is defined
+	if c.Filename == "" && !c.SplitKeyAndCert {
+		var prefix string
+		if c.FilenamePrefix == "" {
+			prefix = c.Name
+		} else {
+			prefix = c.FilenamePrefix
+		}
+		c.Filename = prefix + "_" + certKindDefaultBaseFilename[*c.Kind]
 	}
 }
 
@@ -212,6 +222,17 @@ func (c *Config) Load(path string) error {
 	if c.Global.CertWardenURL == "" {
 		return fmt.Errorf("global.certWardenURL is required")
 	}
+	for _, cert := range c.Certificates {
+		if cert.SplitKeyAndCert {
+			switch *cert.Kind {
+			case KindPrivateCert, KindPrivateCertChain:
+				cert.Filename = cert.FilenamePrefix
+			default:
+				return fmt.Errorf("splitting certificate and key is only supported for kinds: privatecert, privatecertchain")
+			}
+		}
+	}
+
 	c.Global.CertWardenURL = strings.TrimRight(c.Global.CertWardenURL, "/")
 	return nil
 }

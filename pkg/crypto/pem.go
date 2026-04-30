@@ -9,7 +9,7 @@ import (
 )
 
 func DecodePEMBlocks(rawData []byte) ([]*pem.Block, error) {
-	var blocks []*pem.Block
+	blocks := make([]*pem.Block, 0)
 	for len(rawData) > 0 {
 		var block *pem.Block
 		block, rawData = pem.Decode(rawData)

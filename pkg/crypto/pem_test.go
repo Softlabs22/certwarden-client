@@ -17,7 +17,7 @@ func TestDecodePEMBlocksNilData(t *testing.T) {
 
 	blocks, err := DecodePEMBlocks(nil)
 	assertions.NoError(err)
-	assertions.Nil(blocks)
+	assertions.Empty(blocks)
 }
 
 func TestDecodePEMBlocksMalformedData(t *testing.T) {
