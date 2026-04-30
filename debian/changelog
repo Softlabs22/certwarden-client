@@ -1,3 +1,9 @@
+certwarden-client (1.1.1) noble; urgency=medium
+
+  * Fix bug with incorrectly computed file paths in split mode 
+
+ -- Andrey Ignatov <andrey.ignatov@agcsoft.com>  Thu, 30 Apr 2026 15:59:47 +0000
+
 certwarden-client (1.1.0) noble; urgency=medium
 
   * Support saving split key and certificate for a single job for atomicity
