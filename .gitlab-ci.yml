@@ -1,6 +1,17 @@
+include:
+  - project: softlabs/pipelines/snippets
+    ref: master
+    file:
+      - "review/claude-code-review.yml"
+
 stages:
+  - scan
+  - review
   - build
   - publish
+
+claude-code-review:
+  extends: .claude-code-review-template
 
 variables:
   DEBIAN_FRONTEND: noninteractive
